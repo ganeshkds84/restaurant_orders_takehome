@@ -16,6 +16,8 @@
     "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix client",
     "typecheck:server": "npm run typecheck --prefix server",
     "typecheck:client": "npm run typecheck --prefix client",
+    "db:migrate": "npm run db:migrate --prefix server",
+    "db:seed": "npm run db:seed --prefix server",
     "install:all": "npm install && npm install --prefix server && npm install --prefix client"
   },
   "devDependencies": {
