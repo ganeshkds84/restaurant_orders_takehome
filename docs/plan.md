@@ -26,34 +26,41 @@
   - Created REST API endpoints (`POST /api/orders`, `GET /api/orders`, `GET /api/orders/:id`) with Zod schema validation and waiter-scoped RBAC.
   - Built frontend `OrderCreation` component with interactive menu picker, quantity adjustments, note instructions, and authoritative total confirmation, and `OrderList` component for active order tickets.
   - Added 16 new automated backend test cases (including the CRITICAL historical price mutation regression test and atomic rollback verification) and 4 new frontend test cases, bringing the repository test total to 71 automated tests across server and client.
+- **Session 5: Order Lifecycle & Business Rules (Phase 5)**
+  - Implemented authoritative server-side state machine (`order.state-machine.ts`) enforcing the legal transition progression (*Placed $\to$ Accepted $\to$ Preparing $\to$ Ready $\to$ Served*), blocking state skipping, backward transitions, and terminal state modifications.
+  - Implemented order cancellation business rules: permitted strictly while an order is `placed` or `accepted`, and rejected once in `preparing`, `ready`, or `served`.
+  - Implemented order line voiding: requiring non-empty reasons, marking lines as voided (`is_voided = true`) without physical deletion, and dynamically recalculating authoritative totals from active lines.
+  - Implemented adding lines to open orders before served.
+  - Added REST lifecycle endpoints (`PATCH /api/orders/:id/status`, `POST /api/orders/:id/cancel`, `POST /api/orders/:id/lines`, `PATCH /api/orders/:id/lines/:lineId/void`).
+  - Built interactive frontend lifecycle UI in `OrderList.tsx` with status progression badges, state-adapted action buttons, cancel confirmation modal, and line void modal with reason validation.
+  - Added 9 new backend test cases (25 order tests, 62 total backend tests) and 4 new frontend test cases (22 total frontend tests), bringing the repository total to 84 automated tests.
 - **Future Sessions (Planned)**
-  - Session 5: Order Lifecycle Transitions & Line Voiding (Phase 5)
   - Session 6: Waiter Collaborators & Order Search/Filters/Pagination (Phase 6)
   - Session 7: Bulk Menu Operations, Dashboard Analytics, Audit History & Slow-Order Alerts (Phase 7)
 
 ---
 
 ## 2. Order of Implementation and Rationale
-1. **Database Schema & Relational Constraints First**: Modeled `orders` and `order_lines` with strict foreign keys, check constraints, and historical snapshot columns.
-2. **Atomic Transaction Layer**: Ensured all order creation operations execute within a transactional boundary so no partial orders can ever be persisted if a line item is invalid.
-3. **Historical Price Snapshotting**: Implemented server-side price locking from `menu_items.price` directly onto `order_lines.unit_price`.
-4. **Backend Automated Tests**: Validated order creation, ownership spoofing prevention, price snapshotting immutability, and role-based order visibility with 16 backend tests.
-5. **Frontend UI & Reactive Controls**: Built `OrderCreation` and `OrderList` with rich modern aesthetics, real-time ticket calculation, and error feedback.
-6. **Frontend Integration Tests**: Validated ticket creation, submission, and list navigation with Vitest and React Testing Library.
+1. **Authoritative State Machine**: Encapsulated state transition rules in a dedicated state machine service before route wiring to prevent scattered conditional logic.
+2. **Atomic Repository Operations & Concurrency**: Implemented atomic conditional updates (`WHERE id = $1 AND status = $2`) preventing race conditions during simultaneous status updates.
+3. **Domain Business Rules**: Implemented cancellation boundaries, line voiding with required reason validation, and dynamic total recalculations in `OrderService`.
+4. **Backend Automated Tests**: Wrote comprehensive tests covering legal progressions, all invalid transitions, cancellation boundaries, line voiding, and RBAC isolation.
+5. **Frontend Lifecycle Controls**: Built state-adapted action buttons, cancel confirmation modal, and line void modal with required reason validation in `OrderList.tsx`.
+6. **Frontend Integration Tests**: Validated lifecycle transitions, cancel dialog, line voiding modal, and total recalculation in Vitest.
 
 ---
 
 ## 3. Estimated vs. Actual Time
-- **Database Schema Migration (`003`)**: Estimated 20m, took ~15m.
-- **Backend Order Repository, Service & Routes**: Estimated 45m, took ~35m.
-- **Backend Test Suite (16 cases)**: Estimated 40m, took ~30m.
-- **Frontend Order Creation & Order List UI**: Estimated 50m, took ~40m.
-- **Frontend Test Suite (4 cases)**: Estimated 30m, took ~20m.
-- **Documentation & Verification**: Estimated 25m, took ~15m.
+- **State Machine & Validators**: Estimated 25m, took ~15m.
+- **Backend Service, Repository & Routes**: Estimated 40m, took ~30m.
+- **Backend Test Suite (9 new cases)**: Estimated 30m, took ~20m.
+- **Frontend Lifecycle UI & Modals**: Estimated 45m, took ~35m.
+- **Frontend Test Suite (4 cases)**: Estimated 25m, took ~20m.
+- **Documentation & Verification**: Estimated 20m, took ~15m.
 
 ---
 
 ## 4. What Was Cut or Deferred
-- **Order state transitions** (*Placed $\to$ Accepted $\to$ Preparing $\to$ Ready $\to$ Served*) and line voiding rules were deferred to Phase 5.
 - **Collaborator assignments** and multi-waiter editing permissions were deferred to Phase 6.
 - **Full-text search, server pagination, and date range filters** were deferred to Phase 7.
+- **Audit/history timeline and slow-order alerts** were deferred to Phase 8 and Phase 9.

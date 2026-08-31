@@ -40,3 +40,25 @@ export const orderQuerySchema = z.object({
     .optional(),
   tableNumber: z.string().trim().max(50).optional(),
 });
+
+export const updateOrderStatusSchema = z.object({
+  status: z.enum(['placed', 'accepted', 'preparing', 'ready', 'served', 'cancelled'], {
+    required_error: 'Target order status is required',
+  }),
+  reason: z.string().max(500, 'Reason cannot exceed 500 characters').optional(),
+});
+
+export const cancelOrderSchema = z.object({
+  reason: z.string().max(500, 'Reason cannot exceed 500 characters').optional(),
+});
+
+export const voidOrderLineSchema = z.object({
+  reason: z
+    .string({ required_error: 'Void reason is required' })
+    .trim()
+    .min(1, 'Void reason is required and cannot be empty')
+    .max(500, 'Void reason cannot exceed 500 characters'),
+});
+
+export const addOrderLineSchema = createOrderItemSchema;
+

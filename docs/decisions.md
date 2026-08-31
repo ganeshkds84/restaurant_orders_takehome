@@ -65,3 +65,17 @@ Log of decisions that shaped this codebase — where a real alternative existed 
 - **Chose:** Wrapping the insertion of the order header and all constituent order lines in a single transactional block (`BEGIN` ... `COMMIT` / `ROLLBACK`).
 - **Rejected:** Inserting orders and order lines sequentially as independent autocommit statements.
 - **Why:** In a fast-paced restaurant environment, an order ticket must either be created completely and accurately or fail entirely. If a single dish is 86ed or has an invalid quantity, the entire transaction is rolled back, preventing orphaned empty orders or partial tickets from confusing the kitchen staff.
+
+---
+
+## Decision 10: Authoritative Server-Side State Machine vs. Ad-Hoc Route Checks
+- **Chose:** Centralizing all lifecycle transition rules in a dedicated state machine engine (`order.state-machine.ts`) that answers `validateStatusTransition(current, target)` and enforces the exact sequential progression (*Placed $\to$ Accepted $\to$ Preparing $\to$ Ready $\to$ Served*) and cancellation rules.
+- **Rejected:** Allowing free-form `status` updates or scattering status `if/else` checks across individual controllers.
+- **Why:** Centralized state machine prevents subtle business rule leaks, blocks malicious clients from skipping states (e.g., Placed $\to$ Served) or reversing states, and provides deterministic error messaging explaining why an illegal transition failed.
+
+---
+
+## Decision 11: Soft-Voiding with Mandatory Reason & Authoritative Recalculation
+- **Chose:** Retaining voided lines in `order_lines` with `is_voided = true` and `void_reason`, while recalculating `orders.total_price` strictly from active (non-voided) lines.
+- **Rejected:** Physically deleting lines (`DELETE FROM order_lines`) or relying on frontend subtraction.
+- **Why:** Preserving voided lines maintains a complete audit trail of what was requested, why it was voided, and who requested it. Recalculating the authoritative total on the server guarantees financial precision down to the cent without trusting client arithmetic.

@@ -6,6 +6,7 @@ import {
   OrderLine,
   OrderWithLines,
   OrderQueryFilters,
+  OrderStatus,
 } from '../types/order.js';
 import { logger } from '../logging/logger.js';
 import crypto from 'crypto';
@@ -369,6 +370,185 @@ export class OrderRepository {
         });
       }
       throw err;
+    }
+  }
+
+  async updateOrderStatus(
+    orderId: string,
+    expectedStatus: OrderStatus,
+    targetStatus: OrderStatus
+  ): Promise<OrderWithLines | null> {
+    try {
+      const updateQuery = `
+        UPDATE orders
+        SET status = $1, updated_at = NOW()
+        WHERE id = $2 AND status = $3
+        RETURNING id, table_number, primary_waiter_id, status, is_archived, total_price, created_at, updated_at
+      `;
+      const { rows } = await dbPool.query(updateQuery, [targetStatus, orderId, expectedStatus]);
+      if (rows.length === 0) {
+        return null;
+      }
+      return this.findById(orderId);
+    } catch (err) {
+      if (isConnectionError(err)) {
+        logger.debug('PostgreSQL unavailable; updating order status in memory');
+        const dbOrder = memoryOrders.get(orderId);
+        if (!dbOrder) return null;
+        if (dbOrder.status !== expectedStatus) return null;
+
+        dbOrder.status = targetStatus;
+        dbOrder.updated_at = new Date();
+        memoryOrders.set(orderId, dbOrder);
+        return this.findById(orderId);
+      }
+      throw err;
+    }
+  }
+
+  async voidOrderLine(
+    orderId: string,
+    lineId: string,
+    voidReason: string,
+    newTotalPrice: number
+  ): Promise<OrderWithLines | null> {
+    let client;
+    try {
+      client = await dbPool.connect();
+    } catch (connErr) {
+      if (isConnectionError(connErr)) {
+        logger.debug('PostgreSQL unavailable; voiding order line in memory');
+        const dbOrder = memoryOrders.get(orderId);
+        const dbLine = memoryOrderLines.get(lineId);
+        if (!dbOrder || !dbLine || dbLine.order_id !== orderId) return null;
+
+        dbLine.is_voided = true;
+        dbLine.void_reason = voidReason;
+        dbLine.updated_at = new Date();
+        memoryOrderLines.set(lineId, dbLine);
+
+        dbOrder.total_price = newTotalPrice.toFixed(2);
+        dbOrder.updated_at = new Date();
+        memoryOrders.set(orderId, dbOrder);
+
+        return this.findById(orderId);
+      }
+      throw connErr;
+    }
+
+    try {
+      await client.query('BEGIN');
+
+      const voidLineQuery = `
+        UPDATE order_lines
+        SET is_voided = TRUE, void_reason = $1, updated_at = NOW()
+        WHERE id = $2 AND order_id = $3
+        RETURNING id
+      `;
+      const lineRes = await client.query(voidLineQuery, [voidReason, lineId, orderId]);
+      if (lineRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      const updateOrderQuery = `
+        UPDATE orders
+        SET total_price = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING id
+      `;
+      await client.query(updateOrderQuery, [newTotalPrice.toFixed(2), orderId]);
+
+      await client.query('COMMIT');
+      return this.findById(orderId);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      logger.error('Failed to void order line in transaction', { error: err });
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async addOrderLine(
+    orderId: string,
+    lineData: {
+      menuItemId: string;
+      itemName: string;
+      quantity: number;
+      unitPrice: number;
+      specialInstructions: string;
+    },
+    newTotalPrice: number
+  ): Promise<OrderWithLines | null> {
+    let client;
+    try {
+      client = await dbPool.connect();
+    } catch (connErr) {
+      if (isConnectionError(connErr)) {
+        logger.debug('PostgreSQL unavailable; adding order line in memory');
+        const dbOrder = memoryOrders.get(orderId);
+        if (!dbOrder) return null;
+
+        const lineId = crypto.randomUUID();
+        const now = new Date();
+        const dbLine: DbOrderLine = {
+          id: lineId,
+          order_id: orderId,
+          menu_item_id: lineData.menuItemId,
+          item_name: lineData.itemName,
+          quantity: lineData.quantity,
+          unit_price: lineData.unitPrice.toFixed(2),
+          special_instructions: lineData.specialInstructions || '',
+          is_voided: false,
+          void_reason: null,
+          created_at: now,
+          updated_at: now,
+        };
+        memoryOrderLines.set(lineId, dbLine);
+
+        dbOrder.total_price = newTotalPrice.toFixed(2);
+        dbOrder.updated_at = now;
+        memoryOrders.set(orderId, dbOrder);
+
+        return this.findById(orderId);
+      }
+      throw connErr;
+    }
+
+    try {
+      await client.query('BEGIN');
+
+      const insertLineQuery = `
+        INSERT INTO order_lines (order_id, menu_item_id, item_name, quantity, unit_price, special_instructions, is_voided)
+        VALUES ($1, $2, $3, $4, $5, $6, FALSE)
+        RETURNING id
+      `;
+      await client.query(insertLineQuery, [
+        orderId,
+        lineData.menuItemId,
+        lineData.itemName,
+        lineData.quantity,
+        lineData.unitPrice.toFixed(2),
+        lineData.specialInstructions || '',
+      ]);
+
+      const updateOrderQuery = `
+        UPDATE orders
+        SET total_price = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING id
+      `;
+      await client.query(updateOrderQuery, [newTotalPrice.toFixed(2), orderId]);
+
+      await client.query('COMMIT');
+      return this.findById(orderId);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      logger.error('Failed to add order line in transaction', { error: err });
+      throw err;
+    } finally {
+      client.release();
     }
   }
 

@@ -85,3 +85,22 @@ export interface OrderQueryFilters {
   isArchived?: boolean;
   tableNumber?: string;
 }
+
+export interface UpdateOrderStatusInput {
+  status: OrderStatus;
+  reason?: string;
+}
+
+export interface CancelOrderInput {
+  reason?: string;
+}
+
+export interface VoidOrderLineInput {
+  reason: string;
+}
+
+export interface AddOrderLineInput {
+  menuItemId: string;
+  quantity: number;
+  specialInstructions?: string;
+}

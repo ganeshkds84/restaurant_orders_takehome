@@ -48,3 +48,23 @@ export interface CreateOrderPayload {
   tableNumber: string;
   items: CreateOrderItemPayload[];
 }
+
+export interface UpdateOrderStatusPayload {
+  status: OrderStatus;
+  reason?: string;
+}
+
+export interface CancelOrderPayload {
+  reason?: string;
+}
+
+export interface VoidOrderLinePayload {
+  reason: string;
+}
+
+export interface AddOrderLinePayload {
+  menuItemId: string;
+  quantity: number;
+  specialInstructions?: string;
+}
+

@@ -480,4 +480,430 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
       expect(managerGet2.status).toBe(200);
     });
   });
+
+  describe('5. Order Lifecycle State Transitions (Phase 5)', () => {
+    it('24. Valid core lifecycle sequence: Placed -> Accepted -> Preparing -> Ready -> Served', async () => {
+      // 1. Create order (initial state: 'placed')
+      const createRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 21',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+      const orderId = createRes.body.data.order.id;
+      expect(createRes.body.data.order.status).toBe('placed');
+
+      // 2. Transition Placed -> Accepted
+      const acceptRes = await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'accepted' });
+      expect(acceptRes.status).toBe(200);
+      expect(acceptRes.body.data.order.status).toBe('accepted');
+
+      // 3. Transition Accepted -> Preparing
+      const prepRes = await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'preparing' });
+      expect(prepRes.status).toBe(200);
+      expect(prepRes.body.data.order.status).toBe('preparing');
+
+      // 4. Transition Preparing -> Ready
+      const readyRes = await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'ready' });
+      expect(readyRes.status).toBe(200);
+      expect(readyRes.body.data.order.status).toBe('ready');
+
+      // 5. Transition Ready -> Served
+      const servedRes = await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'served' });
+      expect(servedRes.status).toBe(200);
+      expect(servedRes.body.data.order.status).toBe('served');
+    });
+
+    it('25-28. Invalid transitions rejected: Skipping states, moving backwards, modifying terminal states', async () => {
+      const createRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 22',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+      const orderId = createRes.body.data.order.id;
+
+      // 25. Skipping Accepted (Placed -> Preparing) rejected with 400
+      const skipPrepRes = await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'preparing' });
+      expect(skipPrepRes.status).toBe(400);
+      expect(skipPrepRes.body.message).toMatch(/Illegal state skip/i);
+
+      // 26. Skipping to Served (Placed -> Served) rejected with 400
+      const skipServedRes = await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'served' });
+      expect(skipServedRes.status).toBe(400);
+
+      // Move Placed -> Accepted -> Preparing
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'accepted' });
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'preparing' });
+
+      // 27. Backward transition (Preparing -> Placed or Preparing -> Accepted) rejected with 400
+      const backwardRes = await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'accepted' });
+      expect(backwardRes.status).toBe(400);
+      expect(backwardRes.body.message).toMatch(/backward/i);
+
+      // Move Preparing -> Ready -> Served
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'ready' });
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'served' });
+
+      // 28. Modifying a Served order illegally is rejected with 400
+      const servedEditRes = await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'ready' });
+      expect(servedEditRes.status).toBe(400);
+      expect(servedEditRes.body.message).toMatch(/terminal state/i);
+    });
+  });
+
+  describe('6. Order Cancellation Rules (Phase 5)', () => {
+    it('29. Cancellation from Placed state succeeds', async () => {
+      const createRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 30',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+      const orderId = createRes.body.data.order.id;
+
+      const cancelRes = await request(app)
+        .post(`/api/orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ reason: 'Customer changed mind' });
+
+      expect(cancelRes.status).toBe(200);
+      expect(cancelRes.body.data.order.status).toBe('cancelled');
+
+      // Modifying a Cancelled order is rejected
+      const modifyCancelledRes = await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'preparing' });
+      expect(modifyCancelledRes.status).toBe(400);
+    });
+
+    it('30. Cancellation from Accepted state succeeds', async () => {
+      const createRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 31',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+      const orderId = createRes.body.data.order.id;
+
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'accepted' });
+
+      const cancelRes = await request(app)
+        .post(`/api/orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ reason: 'Kitchen ingredient shortage' });
+
+      expect(cancelRes.status).toBe(200);
+      expect(cancelRes.body.data.order.status).toBe('cancelled');
+    });
+
+    it('31-33. Cancellation rejected when order is in Preparing, Ready, or Served states', async () => {
+      const createRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 32',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+      const orderId = createRes.body.data.order.id;
+
+      // Progress to Preparing
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'accepted' });
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'preparing' });
+
+      // 31. Attempting cancel from Preparing fails with 400
+      const cancelPrepRes = await request(app)
+        .post(`/api/orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ reason: 'Try cancel while preparing' });
+
+      expect(cancelPrepRes.status).toBe(400);
+      expect(cancelPrepRes.body.message).toMatch(/cancellation is only permitted while an order is 'placed' or 'accepted'/i);
+
+      // Progress to Ready
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'ready' });
+
+      // 32. Attempting cancel from Ready fails with 400
+      const cancelReadyRes = await request(app)
+        .post(`/api/orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send();
+      expect(cancelReadyRes.status).toBe(400);
+
+      // Progress to Served
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'served' });
+
+      // 33. Attempting cancel from Served fails with 400
+      const cancelServedRes = await request(app)
+        .post(`/api/orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send();
+      expect(cancelServedRes.status).toBe(400);
+    });
+  });
+
+  describe('7. Order Line Voiding & Total Recalculation (Phase 5)', () => {
+    it('34-37. Voiding an order line requires a reason, marks the line without deleting, recalculates total, and preserves historical prices', async () => {
+      // Create order with Truffle Fries (2x $9.50 = $19) and Caesar Salad (1x $12.00 = $12), Total = $31.00
+      const createRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 40',
+          items: [
+            { menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 2 },
+            { menuItemId: 'a0000000-0000-0000-0000-000000000002', quantity: 1 },
+          ],
+        });
+      const orderId = createRes.body.data.order.id;
+      const friesLineId = createRes.body.data.order.lines[0].id;
+      const saladLineId = createRes.body.data.order.lines[1].id;
+      expect(createRes.body.data.order.totalPrice).toBe(31.0);
+
+      // 34. Voiding without a reason is rejected with 400
+      const voidNoReasonRes = await request(app)
+        .patch(`/api/orders/${orderId}/lines/${friesLineId}/void`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ reason: '' });
+      expect(voidNoReasonRes.status).toBe(400);
+
+      // 35. Valid void with reason succeeds
+      const voidRes = await request(app)
+        .patch(`/api/orders/${orderId}/lines/${friesLineId}/void`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ reason: 'Customer allergic to truffle oil' });
+
+      expect(voidRes.status).toBe(200);
+      const updatedOrder = voidRes.body.data.order;
+
+      // 36. Voided line remains persisted with void reason
+      expect(updatedOrder.lines).toHaveLength(2);
+      const voidedLine = updatedOrder.lines.find((l: any) => l.id === friesLineId);
+      expect(voidedLine).toMatchObject({
+        isVoided: true,
+        voidReason: 'Customer allergic to truffle oil',
+        unitPrice: 9.5, // Historical unit price remains intact
+        quantity: 2,
+      });
+
+      // 37. Total price recalculated excluding voided line (only salad $12.00 remains)
+      expect(updatedOrder.totalPrice).toBe(12.0);
+
+      // Voiding an already-voided line is rejected
+      const reVoidRes = await request(app)
+        .patch(`/api/orders/${orderId}/lines/${friesLineId}/void`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ reason: 'Void again' });
+      expect(reVoidRes.status).toBe(400);
+      expect(reVoidRes.body.message).toMatch(/already voided/i);
+    });
+
+    it('38. Voiding lines is prohibited on Served and Cancelled orders', async () => {
+      const createRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 41',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+      const orderId = createRes.body.data.order.id;
+      const lineId = createRes.body.data.order.lines[0].id;
+
+      // Fast-forward to served
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'accepted' });
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'preparing' });
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'ready' });
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'served' });
+
+      // Void attempt on served order fails
+      const voidServedRes = await request(app)
+        .patch(`/api/orders/${orderId}/lines/${lineId}/void`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ reason: 'Try void after served' });
+
+      expect(voidServedRes.status).toBe(400);
+      expect(voidServedRes.body.message).toMatch(/served/i);
+    });
+  });
+
+  describe('8. Adding Order Lines Before Served (Phase 5)', () => {
+    it('39-40. Lines can be added to an open order before served, snapshotting price and updating total', async () => {
+      // Create initial order with 1x Truffle Fries ($9.50)
+      const createRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 50',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+      const orderId = createRes.body.data.order.id;
+      expect(createRes.body.data.order.totalPrice).toBe(9.5);
+
+      // Add Caesar Salad (1x $12.00) while in Placed
+      const addLineRes = await request(app)
+        .post(`/api/orders/${orderId}/lines`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          menuItemId: 'a0000000-0000-0000-0000-000000000002',
+          quantity: 1,
+          specialInstructions: 'No croutons',
+        });
+
+      expect(addLineRes.status).toBe(201);
+      expect(addLineRes.body.data.order.lines).toHaveLength(2);
+      expect(addLineRes.body.data.order.totalPrice).toBe(21.5); // 9.50 + 12.00 = 21.50
+
+      // Progress to Preparing and add Margherita Pizza (1x $16.50)
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'accepted' });
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'preparing' });
+
+      const addLinePrepRes = await request(app)
+        .post(`/api/orders/${orderId}/lines`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          menuItemId: 'a0000000-0000-0000-0000-000000000003',
+          quantity: 1,
+        });
+
+      expect(addLinePrepRes.status).toBe(201);
+      expect(addLinePrepRes.body.data.order.lines).toHaveLength(3);
+      expect(addLinePrepRes.body.data.order.totalPrice).toBe(38.0); // 21.50 + 16.50 = 38.00
+
+      // Progress to Served
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'ready' });
+      await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({ status: 'served' });
+
+      // 40. Adding lines after served is rejected with 400
+      const addLineServedRes = await request(app)
+        .post(`/api/orders/${orderId}/lines`)
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          menuItemId: 'a0000000-0000-0000-0000-000000000001',
+          quantity: 1,
+        });
+      expect(addLineServedRes.status).toBe(400);
+      expect(addLineServedRes.body.message).toMatch(/served/i);
+    });
+  });
+
+  describe('9. Role-Based Lifecycle Authorization (Phase 5)', () => {
+    it('41. Waiter cannot transition another waiter’s order (403 Forbidden)', async () => {
+      // Waiter 1 creates Order
+      const createRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 60',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+      const orderId = createRes.body.data.order.id;
+
+      // Waiter 2 tries to transition Waiter 1's order -> 403 Forbidden
+      const unauthorizedTransitionRes = await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${waiter2Token}`)
+        .send({ status: 'accepted' });
+
+      expect(unauthorizedTransitionRes.status).toBe(403);
+      expect(unauthorizedTransitionRes.body.message).toMatch(/Forbidden/i);
+
+      // Waiter 2 tries to cancel Waiter 1's order -> 403 Forbidden
+      const unauthorizedCancelRes = await request(app)
+        .post(`/api/orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${waiter2Token}`)
+        .send();
+
+      expect(unauthorizedCancelRes.status).toBe(403);
+
+      // Manager can transition Waiter 1's order -> 200 OK
+      const managerTransitionRes = await request(app)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ status: 'accepted' });
+
+      expect(managerTransitionRes.status).toBe(200);
+      expect(managerTransitionRes.body.data.order.status).toBe('accepted');
+    });
+  });
 });
+

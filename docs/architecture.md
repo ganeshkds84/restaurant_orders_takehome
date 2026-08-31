@@ -44,9 +44,9 @@ The application is structured into decoupled frontend, backend, and data tiers:
 
 ---
 
-## 3. End-to-End Request Path: Order Creation (`POST /api/orders`)
+## 3. End-to-End Request Path: Order Creation & Lifecycle Progression
 
-### Example: Waiter placing an order for Table 14 with Truffle Fries & Margherita Pizza
+### A. Order Creation (`POST /api/orders`)
 1. **Client**: The waiter enters table number "Table 14", selects dishes with quantities, adds special instructions ("Extra crispy"), and clicks "Send Order to Kitchen". Browser sends `POST /api/orders` with authorization header and JSON payload containing `tableNumber` and `items: [{ menuItemId, quantity, specialInstructions }]`.
 2. **CORS & Logging**: `cors()` middleware validates origin; `requestLogger` logs the incoming request method, path, and client IP.
 3. **Authentication Middleware (`authenticate`)**:
@@ -70,10 +70,29 @@ The application is structured into decoupled frontend, backend, and data tiers:
    - Issues `COMMIT` if all rows succeed, or `ROLLBACK` on any error (guaranteeing zero partial orders).
 8. **Response / Serialization**: Mapped order with order lines and authoritative total returned with HTTP 201 `{ status: 'success', data: { order } }`.
 
+### B. Order Lifecycle Transition (`PATCH /api/orders/:id/status`)
+1. **Client**: Waiter clicks "Accept Order" or "Start Preparing". Client sends `PATCH /api/orders/:id/status` with payload `{ "status": "accepted" }`.
+2. **Authentication & RBAC**: `authenticate` resolves caller; waiter identity verified against `order.primary_waiter_id` (managers can transition any order).
+3. **State Machine Validation (`order.state-machine.ts`)**:
+   - Evaluates legal transitions: `placed` $\to$ `accepted` $\to$ `preparing` $\to$ `ready` $\to$ `served`.
+   - Blocks illegal state skipping, backward transitions, and terminal modifications (`served`/`cancelled`).
+4. **Optimistic Concurrency & Persistence**:
+   - Executes atomic SQL conditional update: `UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3`.
+   - Guarantees race safety if multiple staff members transition status simultaneously.
+
+### C. Order Line Voiding (`PATCH /api/orders/:id/lines/:lineId/void`)
+1. **Client**: Staff submits void modal with non-empty `reason` string (e.g., "Customer allergic to mushroom").
+2. **Business Rule Enforcement**:
+   - Validates that order is open (in `placed`, `accepted`, `preparing`, or `ready`).
+   - Verifies that `reason` is non-empty and line is not already voided.
+3. **Persistence & Authoritative Recalculation**:
+   - Inside a database transaction, marks `order_lines.is_voided = TRUE`, stores `void_reason`, and updates `orders.total_price` to sum only remaining active lines.
+   - Historical unit price remains persisted on the voided line.
+
 ---
 
-## 4. What We Decided *Not* to Build in Phase 4
-- **No Order Lifecycle Transitions Yet**: Full state progression (*Placed $\to$ Accepted $\to$ Preparing $\to$ Ready $\to$ Served*) and cancellation rules are deferred to Phase 5.
+## 4. What We Decided *Not* to Build in Phase 5
 - **No Collaborators Management Yet**: Adding secondary waiters/collaborators to orders is scheduled for Phase 6.
 - **No Advanced Search/Filter/Pagination Yet**: Full server-side pagination, date range filtering, and waiter multi-select are scheduled for Phase 7.
 - **No Audit/History Timeline Yet**: Immutable event logging is scheduled for Phase 8.
+- **No Slow-Order Alerts Yet**: Background threshold alerting is scheduled for Phase 9.

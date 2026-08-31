@@ -117,3 +117,43 @@ IMPORTANT:
 2. **UUID Generation in Repository Fallback**: Updated in-memory ID generation across repositories from custom prefix strings (`mem-...`) to standard `crypto.randomUUID()` so created items and orders pass strict Zod UUID validators.
 3. **Multi-User Test State**: Added secondary waiter credentials (`waiter2@restaurant.com`) to repository seeds so waiter-isolation authorization test scenarios verify across multiple distinct users.
 4. **React Testing Library Selector Disambiguation**: Switched ambiguous text selectors (`getByText('Active Orders')`) to `getByRole('heading', { name: 'Active Orders' })` to avoid collisions with navigation tab labels.
+
+---
+
+## Phase 5 — Order Lifecycle & Business Rules
+
+### Prompt
+```
+# Phase 5 — Order Lifecycle & Business Rules
+
+We have completed and committed:
+* Phase 1 — Project Foundation
+* Phase 2 — Authentication + Server-Side RBAC
+* Phase 3 — Menu Item Management + Availability
+* Phase 4 — Order Creation + Order Lines
+
+Now implement ONLY the Order Lifecycle and related business rules required by the Restaurant Orders take-home assignment.
+
+IMPORTANT:
+* Read the assignment specification again before coding.
+* Treat the assignment specification as the source of truth.
+* Preserve the existing architecture and working functionality.
+* Do not rewrite authentication, menu, or order creation unnecessarily.
+* All lifecycle and business rules MUST be enforced server-side.
+* The frontend must never be the authority for legal state transitions.
+* Do not implement collaborators, advanced search/filter/sort/pagination, bulk operations, CSV export, dashboard analytics, audit history, or slow-order alerts yet.
+```
+
+### What you got
+- Authoritative state machine engine (`order.state-machine.ts`) enforcing sequential order progression (*Placed $\to$ Accepted $\to$ Preparing $\to$ Ready $\to$ Served*), blocking state skipping, backward transitions, and terminal state modifications.
+- Complete cancellation business rules: permitted strictly while `placed` or `accepted`, and rejected once `preparing`, `ready`, or `served`.
+- Order line voiding subsystem: requiring non-empty reasons, marking lines as voided (`is_voided = true`) without deletion, and dynamically recalculating authoritative totals from active lines.
+- REST API lifecycle endpoints (`PATCH /api/orders/:id/status`, `POST /api/orders/:id/cancel`, `POST /api/orders/:id/lines`, `PATCH /api/orders/:id/lines/:lineId/void`).
+- Frontend interactive lifecycle controls in `OrderList.tsx` with status progression badges, state-adapted action buttons, cancel confirmation modal, and line void modal with required reason validation.
+- 9 new backend test cases (25 order tests, 62 total backend tests) and 4 new frontend test cases (22 total frontend tests) totaling 84 automated tests.
+
+### What you corrected
+1. **Type Imports in Repository**: Added `OrderStatus` to the type imports in `server/src/orders/order.repository.ts` to satisfy strict TypeScript compiler checks.
+2. **Unused React Import in Tests**: Removed unused `import React from 'react'` in `client/tests/OrderLifecycle.test.tsx` to keep `tsc --noEmit` warning-free.
+3. **Single Order Mock Handler**: Enhanced `OrderLifecycle.test.tsx` fetch mock to return single order data for `GET /api/orders/:id` during ticket expand actions.
+

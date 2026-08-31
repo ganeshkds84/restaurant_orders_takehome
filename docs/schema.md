@@ -122,9 +122,13 @@ Persists individual line items for an order, with historical price snapshots and
 ### Enforced by Application Layer:
 1. **Historical Price Snapshotting**: On order line creation, server queries active menu item price, locks in the snapshot onto `order_lines.unit_price`, and calculates authoritative total.
 2. **Item Availability Check**: Rejecting orders containing 86ed or archived menu items with descriptive 400 errors.
-3. **Atomic Transaction Boundary**: Wrapping order creation + line insertions in a single transaction with automatic rollback if any validation or insertion fails.
+3. **Atomic Transaction Boundary**: Wrapping order creation, line additions, and line voiding in transactional boundaries with automatic rollback on failure.
 4. **Server-Derived Ownership**: Strictly assigning `orders.primary_waiter_id` from authenticated JWT token identity, ignoring any client-supplied spoofed waiter ID.
-5. **RBAC Scoping**: Scoping waiter order queries strictly to their own orders while granting managers visibility across all restaurant orders.
+5. **RBAC Scoping**: Scoping waiter order queries and lifecycle transitions strictly to their own orders while granting managers visibility across all restaurant orders.
+6. **State Machine Transition Rules**: Strictly validating sequential progression (*Placed $\to$ Accepted $\to$ Preparing $\to$ Ready $\to$ Served*), blocking state skips and backward transitions.
+7. **Cancellation Boundaries**: Restricting cancellation strictly to `placed` and `accepted` states.
+8. **Line Voiding Invariants**: Enforcing non-empty void reasons, restricting voiding to open orders (before served/cancelled), and dynamically recalculating authoritative totals from active lines.
+9. **Optimistic Concurrency**: Conditional `WHERE id = $1 AND status = $2` updates preventing conflicting race conditions.
 
 ---
 
@@ -132,3 +136,4 @@ Persists individual line items for an order, with historical price snapshots and
 - **Order Queue Queries**: Composite filtering on `status`, `primary_waiter_id`, and `created_at` uses indexed scans to maintain sub-5ms response times at millions of order rows.
 - **Historical Snapshot Safety**: Because `order_lines` stores `unit_price` directly, order history displays never require join-based price lookups that could corrupt past revenue metrics when menu prices change.
 - **Line Item Joins**: `idx_order_lines_order_id` enables fast index joins ($O(\log N)$) when expanding order lines for ticket views.
+- **Atomic State Transitions**: Index-backed status updates avoid row-level deadlock and execute in single-digit microseconds.

@@ -73,3 +73,94 @@ export async function createOrderApi(
 
   return body.data.order;
 }
+
+export async function updateOrderStatusApi(
+  token: string,
+  id: string,
+  status: string,
+  reason?: string
+): Promise<Order> {
+  const response = await fetch(`${API_BASE}/orders/${id}/status`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ status, reason }),
+  });
+
+  const body = (await response.json()) as ApiResponse<{ order: Order }>;
+  if (!response.ok || body.status !== 'success' || !body.data?.order) {
+    throw new Error(body.message || 'Failed to update order status');
+  }
+
+  return body.data.order;
+}
+
+export async function cancelOrderApi(
+  token: string,
+  id: string,
+  reason?: string
+): Promise<Order> {
+  const response = await fetch(`${API_BASE}/orders/${id}/cancel`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ reason }),
+  });
+
+  const body = (await response.json()) as ApiResponse<{ order: Order }>;
+  if (!response.ok || body.status !== 'success' || !body.data?.order) {
+    throw new Error(body.message || 'Failed to cancel order');
+  }
+
+  return body.data.order;
+}
+
+export async function voidOrderLineApi(
+  token: string,
+  orderId: string,
+  lineId: string,
+  reason: string
+): Promise<Order> {
+  const response = await fetch(`${API_BASE}/orders/${orderId}/lines/${lineId}/void`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ reason }),
+  });
+
+  const body = (await response.json()) as ApiResponse<{ order: Order }>;
+  if (!response.ok || body.status !== 'success' || !body.data?.order) {
+    throw new Error(body.message || 'Failed to void order line');
+  }
+
+  return body.data.order;
+}
+
+export async function addOrderLineApi(
+  token: string,
+  orderId: string,
+  payload: { menuItemId: string; quantity: number; specialInstructions?: string }
+): Promise<Order> {
+  const response = await fetch(`${API_BASE}/orders/${orderId}/lines`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const body = (await response.json()) as ApiResponse<{ order: Order }>;
+  if (!response.ok || body.status !== 'success' || !body.data?.order) {
+    throw new Error(body.message || 'Failed to add item to order');
+  }
+
+  return body.data.order;
+}
+
