@@ -4,12 +4,14 @@ import { Layout } from './components/Layout';
 import { LoginForm } from './components/LoginForm';
 import { SessionDashboard } from './components/SessionDashboard';
 import { MenuManagement } from './components/MenuManagement';
+import { OrderCreation } from './components/OrderCreation';
+import { OrderList } from './components/OrderList';
 import { HealthStatus } from './components/HealthStatus';
-import { UtensilsCrossed, ShieldCheck } from 'lucide-react';
+import { UtensilsCrossed, ShieldCheck, ShoppingBag, Receipt } from 'lucide-react';
 
 const MainContent: React.FC = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'menu' | 'rbac'>('menu');
+  const [activeTab, setActiveTab] = useState<'menu' | 'create-order' | 'orders' | 'rbac'>('menu');
 
   if (isLoading) {
     return (
@@ -38,7 +40,7 @@ const MainContent: React.FC = () => {
               Restaurant Orders Platform
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>
-              Phase 3: Menu Item Management & Live Availability
+              Phase 4: Order Creation, Lines & Historical Price Snapshots
             </p>
           </div>
 
@@ -77,10 +79,60 @@ const MainContent: React.FC = () => {
               gap: '0.75rem',
               borderBottom: '1px solid var(--border-subtle)',
               paddingBottom: '0.5rem',
+              overflowX: 'auto',
             }}
           >
             <button
+              id="tab-create-order"
+              data-testid="tab-create-order"
+              onClick={() => setActiveTab('create-order')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.6rem 1.2rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.9375rem',
+                fontWeight: activeTab === 'create-order' ? 600 : 400,
+                backgroundColor: activeTab === 'create-order' ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                color: activeTab === 'create-order' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                border: activeTab === 'create-order' ? '1px solid var(--border-focus)' : '1px solid transparent',
+                cursor: 'pointer',
+                transition: 'var(--transition-fast)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <ShoppingBag size={18} color={activeTab === 'create-order' ? 'var(--accent-primary)' : 'currentColor'} />
+              <span>New Order</span>
+            </button>
+
+            <button
+              id="tab-orders"
+              data-testid="tab-orders"
+              onClick={() => setActiveTab('orders')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.6rem 1.2rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.9375rem',
+                fontWeight: activeTab === 'orders' ? 600 : 400,
+                backgroundColor: activeTab === 'orders' ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                color: activeTab === 'orders' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                border: activeTab === 'orders' ? '1px solid var(--border-focus)' : '1px solid transparent',
+                cursor: 'pointer',
+                transition: 'var(--transition-fast)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <Receipt size={18} color={activeTab === 'orders' ? 'var(--accent-primary)' : 'currentColor'} />
+              <span>Active Orders</span>
+            </button>
+
+            <button
               id="tab-menu"
+              data-testid="tab-menu"
               onClick={() => setActiveTab('menu')}
               style={{
                 display: 'inline-flex',
@@ -95,14 +147,16 @@ const MainContent: React.FC = () => {
                 border: activeTab === 'menu' ? '1px solid var(--border-focus)' : '1px solid transparent',
                 cursor: 'pointer',
                 transition: 'var(--transition-fast)',
+                whiteSpace: 'nowrap',
               }}
             >
               <UtensilsCrossed size={18} color={activeTab === 'menu' ? 'var(--accent-primary)' : 'currentColor'} />
-              <span>Menu Management & Availability</span>
+              <span>Menu Management</span>
             </button>
 
             <button
               id="tab-rbac"
+              data-testid="tab-rbac"
               onClick={() => setActiveTab('rbac')}
               style={{
                 display: 'inline-flex',
@@ -117,15 +171,19 @@ const MainContent: React.FC = () => {
                 border: activeTab === 'rbac' ? '1px solid var(--border-focus)' : '1px solid transparent',
                 cursor: 'pointer',
                 transition: 'var(--transition-fast)',
+                whiteSpace: 'nowrap',
               }}
             >
               <ShieldCheck size={18} color={activeTab === 'rbac' ? 'var(--accent-primary)' : 'currentColor'} />
-              <span>Session & RBAC Verification</span>
+              <span>RBAC Verification</span>
             </button>
           </div>
 
           {/* Active Tab Content */}
-          {activeTab === 'menu' ? <MenuManagement /> : <SessionDashboard />}
+          {activeTab === 'create-order' && <OrderCreation onOrderCreated={() => {}} />}
+          {activeTab === 'orders' && <OrderList />}
+          {activeTab === 'menu' && <MenuManagement />}
+          {activeTab === 'rbac' && <SessionDashboard />}
         </div>
       )}
 

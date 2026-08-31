@@ -62,7 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
               {appName}
             </h1>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-              Phase 3 • Menu & Availability
+              Phase 4 • Order Creation & Lines
             </div>
           </div>
         </div>

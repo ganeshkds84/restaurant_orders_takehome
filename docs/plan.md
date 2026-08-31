@@ -19,32 +19,41 @@
   - Built REST endpoints under `/api/menu` with Zod validation and server-side RBAC (`requireManager`, `requireStaff`).
   - Built frontend `MenuManagement` component featuring live category filter pills, real-time availability toggle (86'd status), dish creation/edit modals, and role-adapted waiter read-only catalogs.
   - Wrote 19 new backend test cases and 6 new frontend test cases (totaling 51 automated tests).
+- **Session 4: Order Creation & Order Lines (Phase 4)**
+  - Implemented database schema migration (`003_create_orders_and_order_lines.sql`) with tables `orders` and `order_lines`, relational foreign keys (`CASCADE` / `RESTRICT`), check constraints (`quantity > 0`, `unit_price >= 0`), and lookup indexes.
+  - Implemented `OrderRepository` supporting atomic transactions (`BEGIN...COMMIT/ROLLBACK`) and dual-mode in-memory fallback.
+  - Implemented `OrderService` with critical historical price snapshotting, dish availability enforcement, and authoritative total calculation.
+  - Created REST API endpoints (`POST /api/orders`, `GET /api/orders`, `GET /api/orders/:id`) with Zod schema validation and waiter-scoped RBAC.
+  - Built frontend `OrderCreation` component with interactive menu picker, quantity adjustments, note instructions, and authoritative total confirmation, and `OrderList` component for active order tickets.
+  - Added 16 new automated backend test cases (including the CRITICAL historical price mutation regression test and atomic rollback verification) and 4 new frontend test cases, bringing the repository test total to 71 automated tests across server and client.
 - **Future Sessions (Planned)**
-  - Session 4: Orders & Order Lines Lifecycle (Phase 4)
-  - Session 5: Waiter Collaborators & Order Search/Filters/Pagination (Phase 5)
-  - Session 6: Bulk Menu Operations, Dashboard, History Timeline & Slow-Order Alerts (Phase 6)
+  - Session 5: Order Lifecycle Transitions & Line Voiding (Phase 5)
+  - Session 6: Waiter Collaborators & Order Search/Filters/Pagination (Phase 6)
+  - Session 7: Bulk Menu Operations, Dashboard Analytics, Audit History & Slow-Order Alerts (Phase 7)
 
 ---
 
 ## 2. Order of Implementation and Rationale
-1. **Database Schema & Constraints First**: Modeled `menu_items` with exact `NUMERIC(10, 2)` constraints and unique lowercased name indexes to protect data integrity at the database engine level.
-2. **Backend Service, Repository & RBAC Middleware**: Implemented server-side business logic and RBAC authorization before writing any frontend code.
-3. **Automated Backend Tests**: Validated all CRUD, availability, archiving, and RBAC rejection scenarios with 19 test cases.
-4. **Frontend UI & Interactive Controls**: Built the `MenuManagement` component with role-aware controls (manager full management vs. waiter read-only catalog).
-5. **Frontend Integration Tests**: Validated UI rendering, role-based button visibility, category filtering, search, and modal workflows with Vitest.
+1. **Database Schema & Relational Constraints First**: Modeled `orders` and `order_lines` with strict foreign keys, check constraints, and historical snapshot columns.
+2. **Atomic Transaction Layer**: Ensured all order creation operations execute within a transactional boundary so no partial orders can ever be persisted if a line item is invalid.
+3. **Historical Price Snapshotting**: Implemented server-side price locking from `menu_items.price` directly onto `order_lines.unit_price`.
+4. **Backend Automated Tests**: Validated order creation, ownership spoofing prevention, price snapshotting immutability, and role-based order visibility with 16 backend tests.
+5. **Frontend UI & Reactive Controls**: Built `OrderCreation` and `OrderList` with rich modern aesthetics, real-time ticket calculation, and error feedback.
+6. **Frontend Integration Tests**: Validated ticket creation, submission, and list navigation with Vitest and React Testing Library.
 
 ---
 
 ## 3. Estimated vs. Actual Time
-- **Database Schema Migration & Seeders**: Estimated 25m, took ~15m.
-- **Backend Model, Service & Routes**: Estimated 40m, took ~30m.
-- **Backend Test Suite (19 cases)**: Estimated 35m, took ~25m.
-- **Frontend Menu Management UI & Services**: Estimated 45m, took ~35m.
-- **Frontend Test Suite (6 cases)**: Estimated 25m, took ~20m.
-- **Documentation & Verification**: Estimated 20m, took ~15m.
+- **Database Schema Migration (`003`)**: Estimated 20m, took ~15m.
+- **Backend Order Repository, Service & Routes**: Estimated 45m, took ~35m.
+- **Backend Test Suite (16 cases)**: Estimated 40m, took ~30m.
+- **Frontend Order Creation & Order List UI**: Estimated 50m, took ~40m.
+- **Frontend Test Suite (4 cases)**: Estimated 30m, took ~20m.
+- **Documentation & Verification**: Estimated 25m, took ~15m.
 
 ---
 
 ## 4. What Was Cut or Deferred
-- **Order creation and order lines** were kept strictly deferred to Phase 4 so menu management stands on a solid, well-tested foundation.
-- **Bulk multi-item price updates and CSV export** were scheduled for subsequent phases as designated by the incremental project plan.
+- **Order state transitions** (*Placed $\to$ Accepted $\to$ Preparing $\to$ Ready $\to$ Served*) and line voiding rules were deferred to Phase 5.
+- **Collaborator assignments** and multi-waiter editing permissions were deferred to Phase 6.
+- **Full-text search, server pagination, and date range filters** were deferred to Phase 7.

@@ -78,3 +78,42 @@ IMPORTANT:
 1. **Express 5 Param Typing**: Handled `req.params.id` string-or-array typing cleanly in route handlers to ensure strict TypeScript compiler conformance.
 2. **Tabbed Navigation Context**: Rendered a shared authenticated welcome greeting banner in `App.tsx` so both Menu Management and Session/RBAC verification tabs maintain user context without regression.
 3. **Unused Imports Cleaned**: Removed unused icon imports (`Layers`) in `MenuManagement.tsx` to ensure `tsc --noEmit` runs with zero warnings.
+
+---
+
+## Phase 4 — Order Creation & Order Lines
+
+### Prompt
+```
+# Phase 4 — Order Creation & Order Lines
+
+We have completed and committed:
+* Phase 1 — Project Foundation
+* Phase 2 — Authentication + Server-Side RBAC
+* Phase 3 — Menu Item Management + Availability
+
+Now implement ONLY the Order Creation and Order Lines functionality required by the Restaurant Orders take-home assignment.
+
+IMPORTANT:
+* Read the assignment specification again before coding.
+* Treat the assignment specification as the source of truth.
+* Preserve the existing Express + TypeScript + PostgreSQL + React architecture.
+* Do not rewrite working authentication, RBAC, or menu functionality unnecessarily.
+* Do not implement later phases such as collaborators, advanced search/filter/sort/pagination, bulk actions, CSV export, dashboard analytics, audit history, or slow-order alerts.
+* All important business rules must be enforced server-side.
+* Do not trust frontend-supplied user IDs, roles, prices, totals, or protected fields.
+```
+
+### What you got
+- Database migration `003_create_orders_and_order_lines.sql` modeling `orders` and `order_lines` with relational constraints, positive quantity checks, non-negative unit price checks, and foreign key indexes.
+- Data access repository (`OrderRepository`) supporting atomic transactions (`BEGIN...COMMIT/ROLLBACK`) with zero orphaned records on error, plus in-memory fallback.
+- Domain service (`OrderService`) implementing critical historical price snapshotting from `menu_items.price` directly onto `order_lines.unit_price`, dish availability checks, and authoritative total calculation.
+- REST endpoints under `/api/orders` with Zod validation and waiter-scoped RBAC authorization.
+- React frontend components: `OrderCreation` (interactive dish picker, quantity controls, special instructions, running total preview, confirmation banner with server total) and `OrderList` (active tickets, order lines with historical snapshots, status badges).
+- Automated test suites: 16 new backend test cases (including the critical historical price mutation regression test) and 4 new frontend test cases (71 total tests).
+
+### What you corrected
+1. **Authenticated User ID Field**: Corrected `user.userId` to `user.id` in `OrderService` matching the `UserResponse` interface produced by the authentication middleware.
+2. **UUID Generation in Repository Fallback**: Updated in-memory ID generation across repositories from custom prefix strings (`mem-...`) to standard `crypto.randomUUID()` so created items and orders pass strict Zod UUID validators.
+3. **Multi-User Test State**: Added secondary waiter credentials (`waiter2@restaurant.com`) to repository seeds so waiter-isolation authorization test scenarios verify across multiple distinct users.
+4. **React Testing Library Selector Disambiguation**: Switched ambiguous text selectors (`getByText('Active Orders')`) to `getByRole('heading', { name: 'Active Orders' })` to avoid collisions with navigation tab labels.

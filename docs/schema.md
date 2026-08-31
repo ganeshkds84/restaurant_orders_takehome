@@ -58,29 +58,77 @@ Persists restaurant menu dishes, beverage items, fixed prices, and real-time ava
 - `idx_menu_items_available`: B-Tree index on `is_available` for filtering orderable items.
 - `idx_menu_items_archived`: B-Tree index on `is_archived` for default catalog filtering.
 
+### 4. `orders`
+Persists customer dining table orders, primary waiter ownership, authoritative totals, and status.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | UUID | PRIMARY KEY DEFAULT `gen_random_uuid()` | Unique order UUID identifier |
+| `table_number` | VARCHAR(50) | NOT NULL | Table designation (e.g. "Table 12", "Patio-4") |
+| `primary_waiter_id` | UUID | NOT NULL, REFERENCES `users(id)` ON DELETE RESTRICT | User ID of waiter who created the order |
+| `status` | VARCHAR(32) | NOT NULL DEFAULT `'placed'`, CHECK (`status IN ('placed', 'accepted', 'preparing', 'ready', 'served', 'cancelled')`) | Lifecycle status |
+| `is_archived` | BOOLEAN | NOT NULL DEFAULT FALSE | Soft-archive flag for historical orders |
+| `total_price` | NUMERIC(10, 2) | NOT NULL DEFAULT 0.00, CHECK (`total_price >= 0`) | Authoritative total computed from line snapshots |
+| `created_at` | TIMESTAMPTZ | NOT NULL DEFAULT NOW() | Order creation timestamp |
+| `updated_at` | TIMESTAMPTZ | NOT NULL DEFAULT NOW() | Last order update timestamp |
+
+**Indexes**:
+- `idx_orders_primary_waiter_id`: B-Tree index on `primary_waiter_id` for waiter-specific order queries.
+- `idx_orders_status`: B-Tree index on `status` for active order queue filtering.
+- `idx_orders_is_archived`: B-Tree index on `is_archived` to isolate active orders from archive.
+- `idx_orders_table_number`: B-Tree index on `table_number` for quick table order lookups.
+- `idx_orders_created_at`: B-Tree index on `created_at DESC` for chronologically sorted order streams.
+
+---
+
+### 5. `order_lines`
+Persists individual line items for an order, with historical price snapshots and special kitchen instructions.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | UUID | PRIMARY KEY DEFAULT `gen_random_uuid()` | Unique order line identifier |
+| `order_id` | UUID | NOT NULL, REFERENCES `orders(id)` ON DELETE CASCADE | Parent order foreign key |
+| `menu_item_id` | UUID | NOT NULL, REFERENCES `menu_items(id)` ON DELETE RESTRICT | Menu item reference |
+| `item_name` | VARCHAR(255) | NOT NULL | Historical snapshot of menu item name at order time |
+| `quantity` | INTEGER | NOT NULL, CHECK (`quantity > 0`) | Positive item quantity |
+| `unit_price` | NUMERIC(10, 2) | NOT NULL, CHECK (`unit_price >= 0`) | Historical snapshot of unit price at line creation |
+| `special_instructions` | TEXT | NOT NULL DEFAULT '' | Customer requests (e.g., "No onions", "Extra sauce") |
+| `is_voided` | BOOLEAN | NOT NULL DEFAULT FALSE | Line voiding flag (for future lifecycle phases) |
+| `void_reason` | TEXT | NULL | Reason provided when a line is voided |
+| `created_at` | TIMESTAMPTZ | NOT NULL DEFAULT NOW() | Line item addition timestamp |
+| `updated_at` | TIMESTAMPTZ | NOT NULL DEFAULT NOW() | Line item update timestamp |
+
+**Indexes**:
+- `idx_order_lines_order_id`: B-Tree index on `order_id` for retrieving all line items belonging to an order.
+- `idx_order_lines_menu_item_id`: B-Tree index on `menu_item_id` for analytics and foreign key performance.
+
+---
+
+## Relationships
+- `users` $\xrightarrow{1:N}$ `orders`: One primary waiter creates many orders (`orders.primary_waiter_id` $\to$ `users.id`).
+- `orders` $\xrightarrow{1:N}$ `order_lines`: One order has one or more order lines (`order_lines.order_id` $\to$ `orders.id`, cascading on delete).
+- `menu_items` $\xrightarrow{1:N}$ `order_lines`: One menu item is referenced by order lines across historical tickets (`order_lines.menu_item_id` $\to$ `menu_items.id`, restricted on delete).
+
 ---
 
 ## Constraints: Database vs. Application Enforcement
 
 ### Enforced by Database:
-1. **Primary Key Uniqueness**: `id` UUID primary keys ensure entity uniqueness across distributed or concurrent insertions.
-2. **Email Uniqueness**: `CONSTRAINT uq_users_email UNIQUE (email)` prevents duplicate account registrations.
-3. **Menu Item Name Uniqueness**: `CREATE UNIQUE INDEX uq_menu_items_name_lower ON menu_items (LOWER(name))` guarantees dish name uniqueness.
-4. **Monetary Decimal Safety**: `price NUMERIC(10, 2) CHECK (price >= 0)` eliminates floating-point rounding errors and rejects negative values at the storage engine level.
-5. **Role Domain Validation**: `CONSTRAINT chk_users_role CHECK (role IN ('manager', 'waiter'))` guarantees valid roles.
-6. **Not-Null Invariants**: Guarantees that essential entity attributes are never null.
+1. **Primary Key & Foreign Key Integrity**: `orders.primary_waiter_id` and `order_lines.order_id` / `menu_item_id` guarantee relational integrity and prevent orphaned line items via `CASCADE` or `RESTRICT`.
+2. **Positive Quantities & Non-Negative Prices**: `CHECK (quantity > 0)` and `CHECK (unit_price >= 0)` guarantee zero/negative quantities and illegal prices are rejected at the database level.
+3. **Status Domain Invariants**: `CHECK (status IN ('placed', 'accepted', 'preparing', 'ready', 'served', 'cancelled'))` enforces valid lifecycle statuses.
+4. **Monetary Precision**: `NUMERIC(10, 2)` prevents floating point drift across line totals and order sums.
 
 ### Enforced by Application Layer:
-1. **Zod Schema Parsing & Normalization**: Validating payload schemas, string lengths, trimming whitespaces, and limiting decimal precision before SQL execution.
-2. **Credential Verification**: Bcrypt password comparison against stored salted hash.
-3. **Server-Side RBAC Enforcement**: Role checks verified against authenticated token identity directly on the server before dispatching handlers. Waiters are blocked from create/update/archive/availability mutation endpoints with `403 Forbidden`.
-4. **Archive Filtering**: Silently isolating archived items from waiters and regular order queues unless explicitly requested by authorized managers.
-5. **Output Sanitization**: Stripping sensitive fields (`password_hash`) and formatting monetary values consistently.
+1. **Historical Price Snapshotting**: On order line creation, server queries active menu item price, locks in the snapshot onto `order_lines.unit_price`, and calculates authoritative total.
+2. **Item Availability Check**: Rejecting orders containing 86ed or archived menu items with descriptive 400 errors.
+3. **Atomic Transaction Boundary**: Wrapping order creation + line insertions in a single transaction with automatic rollback if any validation or insertion fails.
+4. **Server-Derived Ownership**: Strictly assigning `orders.primary_waiter_id` from authenticated JWT token identity, ignoring any client-supplied spoofed waiter ID.
+5. **RBAC Scoping**: Scoping waiter order queries strictly to their own orders while granting managers visibility across all restaurant orders.
 
 ---
 
 ## Performance & Scalability (100x Data Analysis)
-- **Menu Filtering**: With composite and B-Tree indexes on `is_archived`, `category`, and `is_available`, menu listings execute in sub-millisecond time ($O(\log N)$) even across tens of thousands of menu revisions.
-- **Monetary Safety**: Using `NUMERIC(10, 2)` eliminates IEEE 754 floating-point inaccuracies that compound when calculating order lines and revenue totals.
-- **Connection Pooling**: `pg.Pool` connection pooling manages socket allocation to prevent database resource exhaustion under high concurrency.
-- **Stateless Tokens**: JWT authorization eliminates database session bottleneck on read-heavy routes when cached or short-lived, while maintaining full server-side role validation.
+- **Order Queue Queries**: Composite filtering on `status`, `primary_waiter_id`, and `created_at` uses indexed scans to maintain sub-5ms response times at millions of order rows.
+- **Historical Snapshot Safety**: Because `order_lines` stores `unit_price` directly, order history displays never require join-based price lookups that could corrupt past revenue metrics when menu prices change.
+- **Line Item Joins**: `idx_order_lines_order_id` enables fast index joins ($O(\log N)$) when expanding order lines for ticket views.

@@ -256,8 +256,7 @@ export class MenuRepository {
       return rows[0] as DbMenuItem;
     } catch (err) {
       if (isConnectionError(err)) {
-        logger.debug('PostgreSQL unavailable; creating menu item in in-memory store');
-        const id = `mem-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        const id = crypto.randomUUID();
         const newItem: DbMenuItem = {
           id,
           name,

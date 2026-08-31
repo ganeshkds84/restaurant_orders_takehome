@@ -43,6 +43,18 @@ const memoryUsers: Map<string, DbUser> = new Map([
       updated_at: new Date('2026-01-01T00:00:00Z'),
     },
   ],
+  [
+    'waiter2@restaurant.com',
+    {
+      id: '33333333-3333-3333-3333-333333333333',
+      email: 'waiter2@restaurant.com',
+      name: 'Taylor Jordan (Waiter 2)',
+      password_hash: defaultWaiterHash,
+      role: 'waiter',
+      created_at: new Date('2026-01-01T00:00:00Z'),
+      updated_at: new Date('2026-01-01T00:00:00Z'),
+    },
+  ],
 ]);
 
 function isConnectionError(err: unknown): boolean {
@@ -121,9 +133,8 @@ export class UserRepository {
       return rows[0] as DbUser;
     } catch (err) {
       if (isConnectionError(err)) {
-        logger.debug('PostgreSQL unavailable; creating user in in-memory store');
         const newUser: DbUser = {
-          id: `mem-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          id: crypto.randomUUID(),
           email: normalized,
           name: data.name.trim(),
           password_hash: data.passwordHash,
@@ -153,6 +164,15 @@ export class UserRepository {
       id: '22222222-2222-2222-2222-222222222222',
       email: 'waiter@restaurant.com',
       name: 'Sam Chen (Waiter)',
+      password_hash: defaultWaiterHash,
+      role: 'waiter',
+      created_at: new Date('2026-01-01T00:00:00Z'),
+      updated_at: new Date('2026-01-01T00:00:00Z'),
+    });
+    memoryUsers.set('waiter2@restaurant.com', {
+      id: '33333333-3333-3333-3333-333333333333',
+      email: 'waiter2@restaurant.com',
+      name: 'Taylor Jordan (Waiter 2)',
       password_hash: defaultWaiterHash,
       role: 'waiter',
       created_at: new Date('2026-01-01T00:00:00Z'),

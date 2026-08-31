@@ -51,3 +51,17 @@ Log of decisions that shaped this codebase — where a real alternative existed 
 - **Chose:** Explicit `is_archived` boolean column for removing items from the active catalog.
 - **Rejected:** Destructive SQL `DELETE FROM menu_items` rows.
 - **Why:** Future order-line records must maintain referential integrity with the menu items originally ordered. Deleting menu items physically would either break historical order records (foreign key cascade errors) or leave orphan references. Soft-archiving keeps item history intact while removing outdated dishes from active waiter queues.
+
+---
+
+## Decision 8: Historical Price Snapshotting Directly on Order Lines
+- **Chose:** Copying the current menu item unit price and item title onto `order_lines.unit_price` and `order_lines.item_name` at order creation time, and calculating all order totals strictly from order lines.
+- **Rejected:** Calculating order line totals dynamically via SQL joins on `menu_items.price`.
+- **Why:** When a dish price changes on the menu (e.g. from $250.00 to $300.00), previously placed orders and historical audit receipts must never mutate retroactively. Storing the unit price snapshot on the order line guarantees permanent financial auditability and accurate historical revenue figures.
+
+---
+
+## Decision 9: Atomic PostgreSQL Transaction Boundary for Order Creation
+- **Chose:** Wrapping the insertion of the order header and all constituent order lines in a single transactional block (`BEGIN` ... `COMMIT` / `ROLLBACK`).
+- **Rejected:** Inserting orders and order lines sequentially as independent autocommit statements.
+- **Why:** In a fast-paced restaurant environment, an order ticket must either be created completely and accurately or fail entirely. If a single dish is 86ed or has an invalid quantity, the entire transaction is rolled back, preventing orphaned empty orders or partial tickets from confusing the kitchen staff.

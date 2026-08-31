@@ -1,0 +1,483 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import request from 'supertest';
+import { createApp } from '../src/app.js';
+import { orderRepository } from '../src/orders/order.repository.js';
+import { menuRepository } from '../src/menu/menu.repository.js';
+import { userRepository } from '../src/users/user.repository.js';
+import { signToken } from '../src/auth/jwt.js';
+
+const app = createApp();
+
+const managerUser = {
+  id: '11111111-1111-1111-1111-111111111111',
+  email: 'manager@restaurant.com',
+  name: 'Alex Rivera (Manager)',
+  role: 'manager' as const,
+};
+
+const waiterUser1 = {
+  id: '22222222-2222-2222-2222-222222222222',
+  email: 'waiter1@restaurant.com',
+  name: 'Sam Chen (Waiter 1)',
+  role: 'waiter' as const,
+};
+
+const waiterUser2 = {
+  id: '33333333-3333-3333-3333-333333333333',
+  email: 'waiter2@restaurant.com',
+  name: 'Taylor Jordan (Waiter 2)',
+  role: 'waiter' as const,
+};
+
+const managerToken = signToken({
+  userId: managerUser.id,
+  email: managerUser.email,
+  role: managerUser.role,
+});
+
+const waiter1Token = signToken({
+  userId: waiterUser1.id,
+  email: waiterUser1.email,
+  role: waiterUser1.role,
+});
+
+const waiter2Token = signToken({
+  userId: waiterUser2.id,
+  email: waiterUser2.email,
+  role: waiterUser2.role,
+});
+
+describe('Order Creation & Order Lines API (Phase 4)', () => {
+  beforeEach(() => {
+    orderRepository.resetMemoryStore();
+    menuRepository.resetMemoryStore();
+    userRepository.resetMemoryStore();
+  });
+
+  describe('1. Order Creation & Validation', () => {
+    it('1. Authenticated waiter can create a valid order with line items', async () => {
+      // Truffle Fries (id: a0000000-0000-0000-0000-000000000001, price: 9.50)
+      // Caesar Salad (id: a0000000-0000-0000-0000-000000000002, price: 12.00)
+      const payload = {
+        tableNumber: 'Table 14',
+        items: [
+          {
+            menuItemId: 'a0000000-0000-0000-0000-000000000001',
+            quantity: 2,
+            specialInstructions: 'Extra crispy',
+          },
+          {
+            menuItemId: 'a0000000-0000-0000-0000-000000000002',
+            quantity: 1,
+            specialInstructions: 'Dressing on side',
+          },
+        ],
+      };
+
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send(payload);
+
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe('success');
+      expect(res.body.data.order).toMatchObject({
+        tableNumber: 'Table 14',
+        primaryWaiterId: waiterUser1.id,
+        status: 'placed',
+        isArchived: false,
+        totalPrice: 31.0, // 2*9.50 + 1*12.00 = 19 + 12 = 31.00
+      });
+      expect(res.body.data.order.lines).toHaveLength(2);
+      expect(res.body.data.order.lines[0]).toMatchObject({
+        menuItemId: 'a0000000-0000-0000-0000-000000000001',
+        itemName: 'Truffle Fries',
+        quantity: 2,
+        unitPrice: 9.5,
+        lineTotal: 19.0,
+        specialInstructions: 'Extra crispy',
+      });
+    });
+
+    it('2. Unauthenticated user cannot create an order (returns 401)', async () => {
+      const res = await request(app)
+        .post('/api/orders')
+        .send({
+          tableNumber: 'Table 5',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('3. Invalid order payload (missing table number) is rejected with 400', async () => {
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: '',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.status).toBe('error');
+    });
+
+    it('4. Empty order items array is rejected with 400', async () => {
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 12',
+          items: [],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.status).toBe('error');
+    });
+
+    it('5. Invalid quantities (0, negative, non-integer) are rejected with 400', async () => {
+      const resZero = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 12',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 0 }],
+        });
+      expect(resZero.status).toBe(400);
+
+      const resNeg = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 12',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: -3 }],
+        });
+      expect(resNeg.status).toBe(400);
+
+      const resFloat = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 12',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1.5 }],
+        });
+      expect(resFloat.status).toBe(400);
+    });
+
+    it('6. Nonexistent menu item is rejected with 400', async () => {
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 12',
+          items: [
+            {
+              menuItemId: '00000000-0000-0000-0000-000000000099',
+              quantity: 1,
+            },
+          ],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Menu item not found');
+    });
+
+    it('7. Unavailable (86ed) menu item is rejected with 400', async () => {
+      // Fresh Pasta Carbonara (id: a0000000-0000-0000-0000-000000000006) has is_available: false
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 8',
+          items: [
+            {
+              menuItemId: 'a0000000-0000-0000-0000-000000000006',
+              quantity: 1,
+            },
+          ],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('unavailable');
+    });
+  });
+
+  describe('2. Security & Anti-Tampering', () => {
+    it('8. Server strictly determines the order owner from authentication identity', async () => {
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 3',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.order.primaryWaiterId).toBe(waiterUser1.id);
+    });
+
+    it('9. Client CANNOT supply another user ID to create an order on their behalf', async () => {
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 3',
+          primaryWaiterId: waiterUser2.id, // Attempt to spoof waiter 2
+          primary_waiter_id: waiterUser2.id,
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+
+      expect(res.status).toBe(201);
+      // Must still be assigned to authenticated waiter 1
+      expect(res.body.data.order.primaryWaiterId).toBe(waiterUser1.id);
+    });
+
+    it('10. Client CANNOT supply/override menu prices (server reads from DB)', async () => {
+      // Truffle Fries is 9.50 in database; client tries to supply 1.00
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 3',
+          items: [
+            {
+              menuItemId: 'a0000000-0000-0000-0000-000000000001',
+              quantity: 2,
+              unitPrice: 1.0,
+              price: 1.0,
+            } as any,
+          ],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.order.lines[0].unitPrice).toBe(9.5);
+      expect(res.body.data.order.totalPrice).toBe(19.0);
+    });
+
+    it('11. Client CANNOT supply/override the order total', async () => {
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 3',
+          totalPrice: 0.01,
+          total_price: 0.01,
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.order.totalPrice).toBe(9.5);
+    });
+
+    it('12. Client CANNOT supply/override initial status (always starts as placed)', async () => {
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 3',
+          status: 'ready',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.order.status).toBe('placed');
+    });
+  });
+
+  describe('3. Order Lines & Historical Price Snapshot', () => {
+    it('13-16. Persists line quantity, menu reference, snapshot unit price, and multiple lines', async () => {
+      const payload = {
+        tableNumber: 'Bar-4',
+        items: [
+          {
+            menuItemId: 'a0000000-0000-0000-0000-000000000003', // Margherita Pizza: 16.50
+            quantity: 2,
+          },
+          {
+            menuItemId: 'a0000000-0000-0000-0000-000000000008', // Sparkling Water: 4.00
+            quantity: 3,
+            specialInstructions: 'With lemon slices',
+          },
+        ],
+      };
+
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send(payload);
+
+      expect(res.status).toBe(201);
+      const order = res.body.data.order;
+      expect(order.lines).toHaveLength(2);
+
+      const pizzaLine = order.lines.find((l: any) => l.menuItemId === 'a0000000-0000-0000-0000-000000000003');
+      expect(pizzaLine).toBeDefined();
+      expect(pizzaLine.quantity).toBe(2);
+      expect(pizzaLine.unitPrice).toBe(16.5);
+      expect(pizzaLine.lineTotal).toBe(33.0);
+
+      const waterLine = order.lines.find((l: any) => l.menuItemId === 'a0000000-0000-0000-0000-000000000008');
+      expect(waterLine).toBeDefined();
+      expect(waterLine.quantity).toBe(3);
+      expect(waterLine.unitPrice).toBe(4.0);
+      expect(waterLine.lineTotal).toBe(12.0);
+      expect(waterLine.specialInstructions).toBe('With lemon slices');
+
+      expect(order.totalPrice).toBe(45.0); // 33.0 + 12.0
+    });
+
+    it('17-20. CRITICAL REGRESSION TEST: Changing menu item price later DOES NOT affect existing order line unit price or order total', async () => {
+      // Step 1: Create a menu item with price $250.00
+      const createMenuRes = await request(app)
+        .post('/api/menu')
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({
+          name: 'Special Tomahawk Feast',
+          description: '32oz prime tomahawk steak with all sides',
+          category: 'Mains',
+          price: 250.0,
+          isAvailable: true,
+        });
+
+      expect(createMenuRes.status).toBe(201);
+      const tomahawkId = createMenuRes.body.data.item.id;
+
+      // Step 2: Waiter creates Order A ordering 2x Tomahawk Feast ($250.00 * 2 = $500.00)
+      const orderRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'VIP Table 1',
+          items: [{ menuItemId: tomahawkId, quantity: 2 }],
+        });
+
+      expect(orderRes.status).toBe(201);
+      const orderA = orderRes.body.data.order;
+      expect(orderA.lines[0].unitPrice).toBe(250.0);
+      expect(orderA.totalPrice).toBe(500.0);
+
+      // Step 3: Manager updates Tomahawk Feast price from $250.00 to $300.00
+      const updateMenuRes = await request(app)
+        .patch(`/api/menu/${tomahawkId}`)
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ price: 300.0 });
+
+      expect(updateMenuRes.status).toBe(200);
+      expect(updateMenuRes.body.data.item.price).toBe(300.0);
+
+      // Step 4: Retrieve Order A and confirm historical unit price ($250.00) and total ($500.00) are preserved
+      const getOrderARes = await request(app)
+        .get(`/api/orders/${orderA.id}`)
+        .set('Authorization', `Bearer ${waiter1Token}`);
+
+      expect(getOrderARes.status).toBe(200);
+      const retrievedOrderA = getOrderARes.body.data.order;
+      expect(retrievedOrderA.lines[0].unitPrice).toBe(250.0);
+      expect(retrievedOrderA.lines[0].lineTotal).toBe(500.0);
+      expect(retrievedOrderA.totalPrice).toBe(500.0);
+
+      // Step 5: Verify newly created Order B uses new price ($300.00)
+      const orderBRes = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'VIP Table 2',
+          items: [{ menuItemId: tomahawkId, quantity: 1 }],
+        });
+
+      expect(orderBRes.status).toBe(201);
+      const orderB = orderBRes.body.data.order;
+      expect(orderB.lines[0].unitPrice).toBe(300.0);
+      expect(orderB.totalPrice).toBe(300.0);
+    });
+  });
+
+  describe('4. Transaction & RBAC Integrity', () => {
+    it('21. Transaction rollback: If one requested line is invalid, complete order creation is rejected and zero rows remain', async () => {
+      const ordersBefore = await request(app)
+        .get('/api/orders')
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      const countBefore = ordersBefore.body.data.count;
+
+      // Attempt to create order with 1 valid item and 1 invalid unavailable item
+      const res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 7',
+          items: [
+            { menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }, // valid
+            { menuItemId: 'a0000000-0000-0000-0000-000000000006', quantity: 1 }, // unavailable (86ed)
+          ],
+        });
+
+      expect(res.status).toBe(400);
+
+      // Verify no partial order was created
+      const ordersAfter = await request(app)
+        .get('/api/orders')
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      expect(ordersAfter.body.data.count).toBe(countBefore);
+    });
+
+    it('22-23. Role-based order access: Waiter only sees own orders; Manager sees all orders', async () => {
+      // Waiter 1 creates Order 1
+      const order1Res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`)
+        .send({
+          tableNumber: 'Table 1',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
+        });
+      const order1Id = order1Res.body.data.order.id;
+
+      // Waiter 2 creates Order 2
+      const order2Res = await request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${waiter2Token}`)
+        .send({
+          tableNumber: 'Table 2',
+          items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000002', quantity: 1 }],
+        });
+      const order2Id = order2Res.body.data.order.id;
+
+      // Waiter 1 listing orders: only sees Order 1
+      const waiter1ListRes = await request(app)
+        .get('/api/orders')
+        .set('Authorization', `Bearer ${waiter1Token}`);
+
+      expect(waiter1ListRes.status).toBe(200);
+      expect(waiter1ListRes.body.data.orders).toHaveLength(1);
+      expect(waiter1ListRes.body.data.orders[0].id).toBe(order1Id);
+
+      // Waiter 1 trying to get Order 2 by ID: Forbidden (403)
+      const waiter1GetOrder2Res = await request(app)
+        .get(`/api/orders/${order2Id}`)
+        .set('Authorization', `Bearer ${waiter1Token}`);
+
+      expect(waiter1GetOrder2Res.status).toBe(403);
+
+      // Manager listing orders: sees both Order 1 and Order 2
+      const managerListRes = await request(app)
+        .get('/api/orders')
+        .set('Authorization', `Bearer ${managerToken}`);
+
+      expect(managerListRes.status).toBe(200);
+      expect(managerListRes.body.data.orders.length).toBeGreaterThanOrEqual(2);
+
+      // Manager fetching Order 1 and Order 2 by ID: succeeds for both
+      const managerGet1 = await request(app)
+        .get(`/api/orders/${order1Id}`)
+        .set('Authorization', `Bearer ${managerToken}`);
+      expect(managerGet1.status).toBe(200);
+
+      const managerGet2 = await request(app)
+        .get(`/api/orders/${order2Id}`)
+        .set('Authorization', `Bearer ${managerToken}`);
+      expect(managerGet2.status).toBe(200);
+    });
+  });
+});

@@ -1,0 +1,50 @@
+export type OrderStatus =
+  | 'placed'
+  | 'accepted'
+  | 'preparing'
+  | 'ready'
+  | 'served'
+  | 'cancelled';
+
+export interface OrderLine {
+  id: string;
+  orderId: string;
+  menuItemId: string;
+  itemName: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  specialInstructions: string;
+  isVoided: boolean;
+  voidReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Order {
+  id: string;
+  tableNumber: string;
+  primaryWaiterId: string;
+  primaryWaiter?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  status: OrderStatus;
+  isArchived: boolean;
+  totalPrice: number;
+  createdAt: string;
+  updatedAt: string;
+  lines: OrderLine[];
+}
+
+export interface CreateOrderItemPayload {
+  menuItemId: string;
+  quantity: number;
+  specialInstructions?: string;
+}
+
+export interface CreateOrderPayload {
+  tableNumber: string;
+  items: CreateOrderItemPayload[];
+}

@@ -6,30 +6,34 @@ The application is structured into decoupled frontend, backend, and data tiers:
 ```
 ┌────────────────────────────────────────────────────────┐
 │                   React 18 + Vite                      │
-│   (AuthContext, MenuManagement, SessionView, Header)   │
+│   (AuthContext, OrderCreation, OrderList, Menu, Header)│
 └───────────────────────────┬────────────────────────────┘
                             │ HTTPS / REST (JSON + Bearer JWT)
 ┌───────────────────────────▼────────────────────────────┐
 │                  Express.js API Layer                  │
 │  - Middleware: RequestLogger, Authenticate, RequireRole │
-│  - Routers: Health, Auth, MenuRouter, TestRbac         │
-│  - Validators: Zod Schemas (create, update, filter)    │
-│  - Services: MenuService, AuthService                  │
-│  - Repositories: MenuRepository, UserRepository        │
+│  - Routers: Health, Auth, MenuRouter, OrderRouter       │
+│  - Validators: Zod Schemas (create, update, query)     │
+│  - Services: OrderService, MenuService, AuthService    │
+│  - Repositories: OrderRepository, MenuRepo, UserRepo   │
 └───────────────────────────┬────────────────────────────┘
-                            │ SQL via pg Pool
+                            │ SQL / Transactions via pg Pool
 ┌───────────────────────────▼────────────────────────────┐
 │                   PostgreSQL Database                  │
 │  - users (UUID PK, UNIQUE email, CHECK role)           │
 │  - menu_items (UUID PK, NUMERIC price, CHECK >= 0,     │
 │    UNIQUE lower(name), availability & archive indexes) │
+│  - orders (UUID PK, table_number, primary_waiter_id,   │
+│    status 'placed', total_price, archived)             │
+│  - order_lines (UUID PK, order_id FK, menu_item_id FK, │
+│    quantity > 0, unit_price snapshot, item_name, notes)│
 │  - schema_migrations tracker                           │
 └────────────────────────────────────────────────────────┘
 ```
 
-- **Frontend (Client)**: React 18 single-page application built with Vite and TypeScript. Manages client-side authentication state via `AuthContext`, stores JWT token in `localStorage`, provides live menu catalog & management interface (`MenuManagement`), and handles role-aware presentation.
-- **Backend (Server)**: Node.js + Express API in TypeScript. Provides input validation (Zod schemas), centralized error handling (`AppError`), JWT signing/verification, password hashing (`bcryptjs`), and server-side RBAC middleware (`requireRole`, `requireManager`, `requireStaff`).
-- **Database (PostgreSQL)**: Stores user accounts with salted password hashes and menu items with exact monetary `NUMERIC(10, 2)` types, case-insensitive uniqueness indexes, and real-time availability/archive flags.
+- **Frontend (Client)**: React 18 single-page application built with Vite and TypeScript. Manages client-side authentication state via `AuthContext`, stores JWT token in `localStorage`, provides interactive order ticket creation (`OrderCreation`) and order queue retrieval (`OrderList`), along with live menu catalog & management interface (`MenuManagement`).
+- **Backend (Server)**: Node.js + Express API in TypeScript. Provides input validation (Zod schemas), centralized error handling (`AppError`), atomic PostgreSQL transactions (`BEGIN...COMMIT/ROLLBACK`), historical price snapshotting on line item creation, JWT verification, and server-side RBAC scoping (`requireRole`, `requireManager`, `requireStaff`).
+- **Database (PostgreSQL)**: Relational schema modeling users, menu items, orders, and order lines with foreign key constraints (`ON DELETE CASCADE` / `RESTRICT`), check constraints (`quantity > 0`, `price >= 0`), and indexes for frequent lookups.
 
 ---
 
@@ -40,34 +44,36 @@ The application is structured into decoupled frontend, backend, and data tiers:
 
 ---
 
-## 3. End-to-End Request Path: Menu Item Mutation
+## 3. End-to-End Request Path: Order Creation (`POST /api/orders`)
 
-### Example: Manager Updating Price or Toggling Availability (`PATCH /api/menu/:id/availability`)
-1. **Client**: The browser sends an HTTP `PATCH` request to `/api/menu/<item_id>/availability` with payload `{ "isAvailable": false }` and header `Authorization: Bearer <jwt_token>`.
+### Example: Waiter placing an order for Table 14 with Truffle Fries & Margherita Pizza
+1. **Client**: The waiter enters table number "Table 14", selects dishes with quantities, adds special instructions ("Extra crispy"), and clicks "Send Order to Kitchen". Browser sends `POST /api/orders` with authorization header and JSON payload containing `tableNumber` and `items: [{ menuItemId, quantity, specialInstructions }]`.
 2. **CORS & Logging**: `cors()` middleware validates origin; `requestLogger` logs the incoming request method, path, and client IP.
 3. **Authentication Middleware (`authenticate`)**:
    - Parses the `Bearer` token from the `Authorization` header.
    - Verifies cryptographic signature and expiration with `JWT_SECRET`.
    - Queries `userRepository.findById(decoded.userId)` to confirm user identity.
    - Attaches sanitized server-verified user to `req.user`.
-4. **RBAC Middleware (`requireManager`)**:
-   - Reads `req.user.role`.
-   - If user is `'waiter'`, immediately halts execution and passes `AppError.forbidden(...)` (HTTP 403) to the centralized error handler.
-   - If role is `'manager'`, allows execution to proceed to route handler.
+4. **RBAC Middleware (`requireStaff`)**:
+   - Validates that caller has role `'waiter'` or `'manager'`.
 5. **Input Validation**:
-   - `updateAvailabilitySchema.safeParse(req.body)` validates that `isAvailable` is a strict boolean.
-   - If validation fails, throws `AppError.badRequest('Validation failed', details)` (HTTP 400).
-6. **Service Layer (`MenuService.setAvailability`)**:
-   - Verifies item existence with `menuRepository.findById(id)`. Throws 404 if missing.
-   - Invokes `menuRepository.updateAvailability(id, isAvailable)`.
-7. **Repository Layer (`MenuRepository`)**:
-   - Executes parameterized query: `UPDATE menu_items SET is_available = $1, updated_at = NOW() WHERE id = $2 RETURNING ...`.
-   - Returns updated database row.
-8. **Response / Serialization**: Mapped response returned with HTTP 200 `{ status: 'success', message: '...', data: { item } }`.
+   - `createOrderSchema.safeParse(req.body)` validates that `tableNumber` is non-empty and `items` is an array of at least 1 item with valid UUIDs and positive integer quantities $\ge 1$.
+6. **Service Layer (`OrderService.createOrder`)**:
+   - Resolves all requested menu items from the database.
+   - Verifies each menu item exists, is not archived, and is currently available (`is_available = true`). Throws 400 if any item is missing or 86ed.
+   - Reads the current `price` and `name` from each menu item to lock in historical snapshots.
+   - Calculates the authoritative total using exact decimal arithmetic: $\text{total} = \sum (\text{unitPrice} \times \text{quantity})$.
+7. **Repository Layer with Atomic Transaction (`OrderRepository.createOrderWithLines`)**:
+   - Acquires PostgreSQL connection from pool and issues `BEGIN`.
+   - Inserts row into `orders` with server-derived `primary_waiter_id` and initial status `'placed'`.
+   - Inserts each row into `order_lines` with historical `unit_price`, `item_name`, and `special_instructions`.
+   - Issues `COMMIT` if all rows succeed, or `ROLLBACK` on any error (guaranteeing zero partial orders).
+8. **Response / Serialization**: Mapped order with order lines and authoritative total returned with HTTP 201 `{ status: 'success', data: { order } }`.
 
 ---
 
-## 4. What We Decided *Not* to Build in Phase 3
-- **No Order Management / Order Lines Yet**: Deferred strictly to Phase 4 (Orders & Lifecycle) so menu schemas and availability foundations remain decoupled and rock solid.
-- **No Bulk Item Operations Yet**: Bulk batch updates and CSV exports are scheduled for subsequent phases.
-- **No Waiter Self-Registration**: Staff accounts remain provisioned strictly through seed scripts and management controls.
+## 4. What We Decided *Not* to Build in Phase 4
+- **No Order Lifecycle Transitions Yet**: Full state progression (*Placed $\to$ Accepted $\to$ Preparing $\to$ Ready $\to$ Served*) and cancellation rules are deferred to Phase 5.
+- **No Collaborators Management Yet**: Adding secondary waiters/collaborators to orders is scheduled for Phase 6.
+- **No Advanced Search/Filter/Pagination Yet**: Full server-side pagination, date range filtering, and waiter multi-select are scheduled for Phase 7.
+- **No Audit/History Timeline Yet**: Immutable event logging is scheduled for Phase 8.
