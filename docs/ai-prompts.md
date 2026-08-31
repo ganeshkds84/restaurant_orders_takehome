@@ -45,3 +45,36 @@ IMPORTANT:
 2. **ESM / Module Configuration**: Added `"type": "module"` to `server/package.json` to align with NodeNext module resolution for TypeScript compilation.
 3. **Database Test Resilience**: Configured `UserRepository` and migration/seed scripts to support offline fallback stores so unit test runners and offline evaluation can execute without requiring an active PostgreSQL daemon, while strictly executing full SQL against PostgreSQL when connected.
 4. **Act Warnings in React Testing Library**: Wrapped async test actions with React testing library's `act()` to eliminate component state update warnings in Vitest.
+
+---
+
+## Phase 3 — Menu Item Management & Availability
+
+### Prompt
+```
+# Phase 3 — Menu Item Management & Availability
+
+We have completed and committed Phase 1 (project foundation) and Phase 2 (authentication + server-side RBAC).
+
+Now implement ONLY the Menu Item Management and Availability functionality required by the Restaurant Orders take-home assignment.
+
+IMPORTANT:
+* Read the assignment specification again before implementing.
+* Treat the assignment specification as the source of truth.
+* Preserve the existing Express + TypeScript + PostgreSQL + React architecture.
+* Do not rewrite the existing authentication/RBAC implementation unless a concrete issue is discovered.
+* Do not implement orders, order lines, lifecycle transitions, collaborators, dashboard, audit history, alerts, bulk operations, or CSV export yet.
+* All business rules and authorization must be enforced server-side.
+```
+
+### What you got
+- Database migration `002_create_menu_items.sql` with exact `NUMERIC(10, 2)` monetary columns, non-negative checks, and indexes.
+- Complete repository layer (`MenuRepository`), service layer (`MenuService`), Zod validation schemas, and REST endpoints under `/api/menu`.
+- Comprehensive server-side RBAC enforcement (`requireManager` for creation/updates/archiving/availability, `requireStaff` for listing/retrieval).
+- React `MenuManagement` component with category filter tabs, search filtering, live 86'd availability toggles, creation/edit modal forms, and waiter read-only catalog adaptation.
+- 19 new backend test cases and 6 new frontend test cases (51 total tests).
+
+### What you corrected
+1. **Express 5 Param Typing**: Handled `req.params.id` string-or-array typing cleanly in route handlers to ensure strict TypeScript compiler conformance.
+2. **Tabbed Navigation Context**: Rendered a shared authenticated welcome greeting banner in `App.tsx` so both Menu Management and Session/RBAC verification tabs maintain user context without regression.
+3. **Unused Imports Cleaned**: Removed unused icon imports (`Layers`) in `MenuManagement.tsx` to ensure `tsc --noEmit` runs with zero warnings.

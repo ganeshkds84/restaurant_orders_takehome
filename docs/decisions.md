@@ -33,7 +33,21 @@ Log of decisions that shaped this codebase — where a real alternative existed 
 ---
 
 ## Decision 5: Offline Database Fallback in Repository Layer
-- **Chose:** In-memory fallback user repository when PostgreSQL is offline during unit testing.
+- **Chose:** In-memory fallback repository when PostgreSQL is offline during unit testing.
 - **Rejected:** Requiring a running PostgreSQL daemon for running local unit tests.
 - **Why:** Ensures test suites run instantly and reliably across developer machines, CI pipelines, and assessment review environments without hard dependencies on an active database service, while maintaining 100% real PostgreSQL execution when `DATABASE_URL` is available.
 - **Later reversed:** Initially, repository methods expected a live PostgreSQL connection unconditionally. When testing the suite offline, connection refused errors failed the tests. We upgraded the repository and migration runners to gracefully fallback in offline test environments, making the test suite robust and self-contained.
+
+---
+
+## Decision 6: Monetary Values Stored as Exact `NUMERIC(10, 2)`
+- **Chose:** PostgreSQL `NUMERIC(10, 2)` with application-level 2-decimal place enforcement.
+- **Rejected:** IEEE 754 floating-point types (`FLOAT`, `DOUBLE PRECISION`, or raw JavaScript numbers without string formatting).
+- **Why:** Floating point arithmetic is prone to binary precision errors (e.g. `0.1 + 0.2 = 0.30000000000000004`). In a point-of-sale restaurant system, rounding errors compound when calculating line item totals, taxes, and daily revenue reports. `NUMERIC(10, 2)` ensures mathematical certainty down to the exact cent.
+
+---
+
+## Decision 7: Soft-Archiving Instead of Hard-Deletion for Menu Items
+- **Chose:** Explicit `is_archived` boolean column for removing items from the active catalog.
+- **Rejected:** Destructive SQL `DELETE FROM menu_items` rows.
+- **Why:** Future order-line records must maintain referential integrity with the menu items originally ordered. Deleting menu items physically would either break historical order records (foreign key cascade errors) or leave orphan references. Soft-archiving keeps item history intact while removing outdated dishes from active waiter queues.
