@@ -191,4 +191,44 @@ IMPORTANT:
 2. **Type Imports in Order Repository**: Added `DbOrderCollaborator` and `OrderCollaborator` to type imports in `server/src/orders/order.repository.ts` to satisfy `tsc` build requirements.
 3. **Frontend Test Mock Fresh State**: Updated Vitest mock fetch in `client/tests/Collaborators.test.tsx` to return dynamically cloned JSON instances of mock orders upon expansion, ensuring UI updates immediately reflect collaborator additions.
 
+---
+
+## Phase 7 — Order Finding / Search, Filter, Sort & Server-Side Pagination
+
+### Prompt
+```
+# Phase 7 — Order Finding / Search / Filtering / Sorting / Pagination
+
+We are continuing the Restaurant Orders take-home assignment.
+Implement ONLY the exact order search/finding functionality required by the ORIGINAL ASSIGNMENT SPECIFICATION (Goal 6).
+* One list shows orders across every table the viewer can see.
+* Text search over the table number.
+* Filters for status, waiter and date.
+* Sorting by placed time, status or table.
+* Pagination showing the total number of matches.
+* All of this must happen on the server — do not load every order into the browser and filter there.
+* Do NOT implement later phases such as bulk operations, CSV export, dashboard, audit/history timeline, slow-order alerts, deployment, or unrelated UI polish.
+* Do NOT rewrite working architecture from previous phases.
+* Preserve all existing functionality from Phases 1–6.
+* Do NOT commit or push anything.
+* Return a clear walkthrough of exactly what was implemented and the verification results.
+```
+
+### What you got
+- Server-side text search over table numbers (`search` with SQL `ILIKE` pattern matching).
+- Multi-criteria filtering by order status (`status`), waiter ID (`waiterId`), and calendar date (`date` in `YYYY-MM-DD` format).
+- Server-side sorting allowlist supporting `createdAt`, `status`, and `tableNumber` in ascending and descending directions with deterministic tiebreakers.
+- Server-side pagination with `page` and `limit`, returning total match count, page, limit, and computed `totalPages`.
+- Access scoping: Waiters can only search and filter within orders where they are the primary waiter or an assigned collaborator (`accessibleWaiterId`).
+- Query validation in `orderQuerySchema` via Zod.
+- Frontend Search & Filter Toolbar in `OrderList.tsx` with responsive grid inputs for table search, status, waiter, date, sort dropdowns, and reset filters button.
+- Frontend pagination footer showing "Showing X to Y of Z orders", page size selector, and Previous/Next buttons.
+- 17 new backend automated test cases (`tests/order-search.test.ts`) and 6 new frontend test cases (`tests/OrderSearch.test.tsx`), bringing total test suite to 138 passing automated tests (106 backend, 32 frontend).
+
+### What you corrected
+1. **Zod Transform Table Name Matching**: Fixed `tableNumber` camelCase match in the `orderQuerySchema` sort transform to ensure `tableNumber` is correctly recognized alongside `table_number` and `table`.
+2. **Repository Type Imports**: Added `OrderSortField` and `PaginatedOrdersResult` to type imports in `server/src/orders/order.repository.ts` to satisfy TypeScript production compilation.
+3. **Frontend Test Mock Route Handler**: Added mock handler for `/orders/eligible-waiters` across older frontend test suites (`OrderLifecycle.test.tsx` and `OrderCreation.test.tsx`) to eliminate console warnings when mounting `OrderList`.
+
+
 

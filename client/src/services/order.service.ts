@@ -1,5 +1,5 @@
 import { config } from '../config/env';
-import { Order, CreateOrderPayload } from '../types/order';
+import { Order, CreateOrderPayload, OrderFilters, PaginatedOrdersResponse } from '../types/order';
 
 const API_BASE = config.apiBaseUrl;
 
@@ -12,11 +12,17 @@ interface ApiResponse<T> {
 
 export async function fetchOrdersApi(
   token: string,
-  filters?: { tableNumber?: string; status?: string }
-): Promise<Order[]> {
+  filters?: OrderFilters
+): Promise<PaginatedOrdersResponse> {
   const query = new URLSearchParams();
-  if (filters?.tableNumber) query.append('tableNumber', filters.tableNumber);
+  if (filters?.search) query.append('search', filters.search);
   if (filters?.status) query.append('status', filters.status);
+  if (filters?.waiterId) query.append('waiterId', filters.waiterId);
+  if (filters?.date) query.append('date', filters.date);
+  if (filters?.sortBy) query.append('sortBy', filters.sortBy);
+  if (filters?.sortOrder) query.append('sortOrder', filters.sortOrder);
+  if (filters?.page) query.append('page', String(filters.page));
+  if (filters?.limit) query.append('limit', String(filters.limit));
 
   const url = `${API_BASE}/orders${query.toString() ? `?${query.toString()}` : ''}`;
   const response = await fetch(url, {
@@ -25,13 +31,39 @@ export async function fetchOrdersApi(
     },
   });
 
-  const body = (await response.json()) as ApiResponse<{ orders: Order[]; count: number }>;
+  const body = (await response.json()) as ApiResponse<{
+    orders: Order[];
+    total?: number;
+    page?: number;
+    limit?: number;
+    totalPages?: number;
+    count?: number;
+  }>;
   if (!response.ok || body.status !== 'success' || !body.data) {
     throw new Error(body.message || 'Failed to fetch orders');
   }
 
-  return body.data.orders;
+  const orders = body.data.orders || [];
+  const total =
+    typeof body.data.total === 'number'
+      ? body.data.total
+      : (body.data.count ?? orders.length);
+  const page = body.data.page ?? filters?.page ?? 1;
+  const limit = body.data.limit ?? filters?.limit ?? 10;
+  const totalPages =
+    typeof body.data.totalPages === 'number'
+      ? body.data.totalPages
+      : Math.ceil(total / limit);
+
+  return {
+    orders,
+    total,
+    page,
+    limit,
+    totalPages,
+  };
 }
+
 
 export async function fetchOrderByIdApi(token: string, id: string): Promise<Order> {
   const response = await fetch(`${API_BASE}/orders/${id}`, {

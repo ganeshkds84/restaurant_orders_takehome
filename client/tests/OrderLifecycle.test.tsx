@@ -102,7 +102,21 @@ describe('Order Lifecycle & Voiding Frontend UI (Phase 5)', () => {
           });
         }
 
+        // Eligible waiters
+        if (url.includes('/orders/eligible-waiters')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                status: 'success',
+                data: { waiters: [mockWaiterUser] },
+              }),
+          });
+        }
+
         // Orders GET single or list
+
         if (url.includes('/orders') && (!options || options.method === 'GET' || !options.method)) {
           const matchSingle = url.match(/\/orders\/([a-z0-9-]+)$/i);
           if (matchSingle && matchSingle[1] && !url.includes('?')) {

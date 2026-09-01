@@ -107,15 +107,20 @@ router.get(
         throw AppError.unauthorized('Authentication required');
       }
 
-      const orders = await orderService.listOrders(req.user, parseResult.data);
+      const result = await orderService.listOrders(req.user, parseResult.data);
 
       res.status(200).json({
         status: 'success',
         data: {
-          orders,
-          count: orders.length,
+          orders: result.orders,
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: result.totalPages,
+          count: result.total,
         },
       });
+
     } catch (error) {
       next(error);
     }

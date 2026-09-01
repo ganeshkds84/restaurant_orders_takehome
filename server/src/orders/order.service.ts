@@ -9,8 +9,10 @@ import {
   OrderWithLines,
   OrderCollaborator,
   OrderQueryFilters,
+  PaginatedOrdersResult,
   AddOrderLineInput,
 } from '../types/order.js';
+
 import {
   validateStatusTransition,
   canVoidOrderLines,
@@ -128,16 +130,17 @@ export class OrderService {
   async listOrders(
     user: UserResponse,
     filters: OrderQueryFilters = {}
-  ): Promise<OrderWithLines[]> {
+  ): Promise<PaginatedOrdersResult> {
     const scopedFilters: OrderQueryFilters = { ...filters };
 
-    // Waiters receive orders where they are primary waiter OR assigned collaborator
+    // Server-side access scoping: Waiters can ONLY see orders where they are primary waiter OR collaborator
     if (user.role === 'waiter') {
-      scopedFilters.waiterId = user.id;
+      scopedFilters.accessibleWaiterId = user.id;
     }
 
-    return this.orderRepo.findAll(scopedFilters);
+    return this.orderRepo.findPaginated(scopedFilters);
   }
+
 
   /**
    * Transition order lifecycle status using the authoritative state machine.

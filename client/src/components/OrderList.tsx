@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Order, OrderStatus, OrderCollaborator } from '../types/order';
+import { Order, OrderStatus, OrderCollaborator, OrderSortField, OrderSortOrder } from '../types/order';
 import {
   fetchOrdersApi,
   fetchOrderByIdApi,
@@ -29,6 +29,11 @@ import {
   Users,
   UserPlus,
   UserMinus,
+  Search,
+  ArrowUpDown,
+  X,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface OrderListProps {
@@ -42,6 +47,19 @@ export const OrderList: React.FC<OrderListProps> = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  // Search, Filter, Sort & Pagination State
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [waiterFilter, setWaiterFilter] = useState<string>('');
+  const [dateFilter, setDateFilter] = useState<string>('');
+  const [sortBy, setSortBy] = useState<OrderSortField>('createdAt');
+  const [sortOrder, setSortOrder] = useState<OrderSortOrder>('desc');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [totalOrders, setTotalOrders] = useState<number>(0);
+  const [totalPages, setTotalPages] = useState<number>(0);
+  const [waitersForFilter, setWaitersForFilter] = useState<Array<{ id: string; name: string; email: string }>>([]);
 
   // Void modal state
   const [voidModalOpen, setVoidModalOpen] = useState<boolean>(false);
@@ -69,14 +87,24 @@ export const OrderList: React.FC<OrderListProps> = () => {
   const [isLoadingWaiters, setIsLoadingWaiters] = useState<boolean>(false);
   const [isSubmittingCollab, setIsSubmittingCollab] = useState<boolean>(false);
 
-
   const loadOrders = async () => {
     if (!token) return;
     try {
       setIsLoading(true);
       setErrorMessage(null);
-      const data = await fetchOrdersApi(token);
-      setOrders(data);
+      const res = await fetchOrdersApi(token, {
+        search: searchQuery.trim() || undefined,
+        status: statusFilter ? (statusFilter as OrderStatus) : undefined,
+        waiterId: waiterFilter || undefined,
+        date: dateFilter || undefined,
+        sortBy,
+        sortOrder,
+        page: currentPage,
+        limit: pageSize,
+      });
+      setOrders(res.orders);
+      setTotalOrders(res.total);
+      setTotalPages(res.totalPages);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to fetch orders');
     } finally {
@@ -85,8 +113,27 @@ export const OrderList: React.FC<OrderListProps> = () => {
   };
 
   useEffect(() => {
-    loadOrders();
+    if (token) {
+      fetchEligibleWaitersApi(token)
+        .then((waiters) => setWaitersForFilter(waiters))
+        .catch((err) => console.warn('Could not fetch waiter filter list', err));
+    }
   }, [token]);
+
+  useEffect(() => {
+    loadOrders();
+  }, [token, searchQuery, statusFilter, waiterFilter, dateFilter, sortBy, sortOrder, currentPage, pageSize]);
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('');
+    setWaiterFilter('');
+    setDateFilter('');
+    setSortBy('createdAt');
+    setSortOrder('desc');
+    setCurrentPage(1);
+  };
+
 
   const toggleExpand = async (orderId: string) => {
     if (expandedOrderId === orderId) {
@@ -382,8 +429,225 @@ export const OrderList: React.FC<OrderListProps> = () => {
         </button>
       </div>
 
+      {/* Search & Filter Toolbar */}
+      <div
+        className="glass-card"
+        data-testid="order-search-filter-toolbar"
+        style={{
+          padding: '1.25rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1rem',
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '0.85rem',
+          }}
+        >
+          {/* Table Search */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Search Table
+            </label>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <Search
+                size={16}
+                color="var(--text-muted)"
+                style={{ position: 'absolute', left: '0.75rem', pointerEvents: 'none' }}
+              />
+              <input
+                type="text"
+                className="input-field"
+                data-testid="search-table-input"
+                placeholder="Search by table #..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{ paddingLeft: '2.25rem' }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    position: 'absolute',
+                    right: '0.75rem',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Status Filter */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Status
+            </label>
+            <select
+              className="input-field"
+              data-testid="filter-status-select"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+            >
+              <option value="">All Statuses</option>
+              <option value="placed">Placed</option>
+              <option value="accepted">Accepted</option>
+              <option value="preparing">Preparing</option>
+              <option value="ready">Ready</option>
+              <option value="served">Served</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+
+          {/* Waiter Filter */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Waiter
+            </label>
+            <select
+              className="input-field"
+              data-testid="filter-waiter-select"
+              value={waiterFilter}
+              onChange={(e) => {
+                setWaiterFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+            >
+              <option value="">All Waiters</option>
+              {waitersForFilter.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date Filter */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Date
+            </label>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="date"
+                className="input-field"
+                data-testid="filter-date-input"
+                value={dateFilter}
+                onChange={(e) => {
+                  setDateFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+              />
+              {dateFilter && (
+                <button
+                  type="button"
+                  aria-label="Clear date filter"
+                  onClick={() => {
+                    setDateFilter('');
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    position: 'absolute',
+                    right: '2rem',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Sorting & Reset Controls */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            paddingTop: '0.5rem',
+            borderTop: '1px solid var(--border-glass)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+              <ArrowUpDown size={14} />
+              <span>Sort by:</span>
+            </div>
+
+            <select
+              className="input-field"
+              data-testid="sort-by-select"
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.target.value as OrderSortField);
+                setCurrentPage(1);
+              }}
+              style={{ width: 'auto', padding: '0.35rem 0.65rem', fontSize: '0.8125rem' }}
+            >
+              <option value="createdAt">Placed Time</option>
+              <option value="status">Status</option>
+              <option value="tableNumber">Table Number</option>
+            </select>
+
+            <select
+              className="input-field"
+              data-testid="sort-order-select"
+              value={sortOrder}
+              onChange={(e) => {
+                setSortOrder(e.target.value as OrderSortOrder);
+                setCurrentPage(1);
+              }}
+              style={{ width: 'auto', padding: '0.35rem 0.65rem', fontSize: '0.8125rem' }}
+            >
+              <option value="desc">Descending (Newest / Z-A)</option>
+              <option value="asc">Ascending (Oldest / A-Z)</option>
+            </select>
+          </div>
+
+          {(searchQuery || statusFilter || waiterFilter || dateFilter || sortBy !== 'createdAt' || sortOrder !== 'desc') && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              data-testid="btn-reset-filters"
+              onClick={handleResetFilters}
+              style={{ padding: '0.35rem 0.75rem', fontSize: '0.8125rem', color: '#f87171' }}
+            >
+              Reset Filters
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Success Alert */}
       {actionSuccessMessage && (
+
         <div
           role="alert"
           style={{
@@ -1009,7 +1273,95 @@ export const OrderList: React.FC<OrderListProps> = () => {
         </div>
       )}
 
+      {/* Pagination Footer */}
+      {totalOrders > 0 && (
+        <div
+          className="glass-card"
+          data-testid="pagination-container"
+          style={{
+            padding: '0.85rem 1.25rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1rem',
+            fontSize: '0.875rem',
+          }}
+        >
+          <div
+            data-testid="pagination-info"
+            style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}
+          >
+            Showing <strong style={{ color: 'var(--text-primary)' }}>{(currentPage - 1) * pageSize + 1}</strong> to{' '}
+            <strong style={{ color: 'var(--text-primary)' }}>
+              {Math.min(currentPage * pageSize, totalOrders)}
+            </strong>{' '}
+            of <strong style={{ color: 'var(--text-primary)' }}>{totalOrders}</strong> {totalOrders === 1 ? 'order' : 'orders'}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Page Size:</span>
+              <select
+                className="input-field"
+                data-testid="page-size-select"
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                style={{ width: 'auto', padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                data-testid="btn-prev-page"
+                disabled={currentPage <= 1 || isLoading}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+              >
+                <ChevronLeft size={14} /> Previous
+              </button>
+
+              <span
+                data-testid="current-page-display"
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(99, 102, 241, 0.15)',
+                  color: 'var(--accent-primary)',
+                  fontWeight: 600,
+                  fontSize: '0.75rem',
+                }}
+              >
+                Page {currentPage} of {Math.max(1, totalPages)}
+              </span>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                data-testid="btn-next-page"
+                disabled={currentPage >= totalPages || isLoading}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+              >
+                Next <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Cancel Order Modal */}
+
       {cancelModalOpen && (
         <div
           role="dialog"

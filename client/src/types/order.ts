@@ -83,3 +83,26 @@ export interface AddOrderLinePayload {
   specialInstructions?: string;
 }
 
+export type OrderSortField = 'createdAt' | 'status' | 'tableNumber';
+export type OrderSortOrder = 'asc' | 'desc';
+
+export interface OrderFilters {
+  search?: string;
+  status?: OrderStatus | '';
+  waiterId?: string;
+  date?: string;
+  sortBy?: OrderSortField;
+  sortOrder?: OrderSortOrder;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedOrdersResponse {
+  orders: Order[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+

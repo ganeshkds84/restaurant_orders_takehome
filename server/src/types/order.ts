@@ -104,13 +104,32 @@ export interface CreateOrderInput {
   items: CreateOrderItemInput[];
 }
 
+export type OrderSortField = 'createdAt' | 'status' | 'tableNumber';
+export type OrderSortOrder = 'asc' | 'desc';
+
 export interface OrderQueryFilters {
   primaryWaiterId?: string;
-  waiterId?: string; // Query orders where user is primary waiter OR collaborator
+  waiterId?: string; // Filter by specific waiter
+  accessibleWaiterId?: string; // Enforced server-side caller access scope for waiters
   status?: OrderStatus;
   isArchived?: boolean;
   tableNumber?: string;
+  search?: string; // Text search over table number
+  date?: string; // Filter by specific calendar date YYYY-MM-DD
+  sortBy?: OrderSortField;
+  sortOrder?: OrderSortOrder;
+  page?: number;
+  limit?: number;
 }
+
+export interface PaginatedOrdersResult {
+  orders: OrderWithLines[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 
 export interface UpdateOrderStatusInput {
   status: OrderStatus;

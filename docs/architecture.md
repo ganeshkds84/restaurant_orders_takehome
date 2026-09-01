@@ -93,12 +93,28 @@ The application is structured into decoupled frontend, backend, and data tiers:
 3. **Collaborator Removal (`DELETE /api/orders/:id/collaborators/:userId`)**:
    - When removed by the primary waiter or manager, the collaborator junction row is deleted, and their access to view or modify the order is revoked immediately.
 
+### D. Order Finding, Search, Filtering, Sorting & Pagination (`GET /api/orders`)
+1. **Client**: User types table search, selects status/waiter/date filters, picks sort order, or navigates pages. The browser sends `GET /api/orders?search=...&status=...&waiterId=...&date=...&sortBy=...&sortOrder=...&page=...&limit=...` with the `Authorization: Bearer <token>` header.
+2. **Authentication & Access Scoping**:
+   - `authenticate` middleware verifies JWT token and extracts `req.user`.
+   - `OrderService.listOrders` checks caller role:
+     - For `role === 'waiter'`: Caller's access scope is strictly locked to orders where they are the primary waiter OR an assigned collaborator (`accessibleWaiterId = user.id`). Query parameters supplied by the client cannot widen or bypass this boundary.
+     - For `role === 'manager'`: Manager has restaurant-wide order access.
+3. **Query Validation (`orderQuerySchema`)**:
+   - Validates search string length ($\le 50$), enum status, UUID regex for `waiterId`, ISO date format `^\d{4}-\d{2}-\d{2}$`, sort field allowlist (`createdAt`, `status`, `tableNumber`), sort direction (`asc`/`desc`), and numeric ranges for `page` ($\ge 1$) and `limit` ($1 \le \text{limit} \le 100$).
+4. **Repository Execution (`OrderRepository.findPaginated`)**:
+   - Constructs safe parameterized SQL conditions for filtering and searching.
+   - Executes `SELECT COUNT(DISTINCT o.id)::int AS total FROM orders o ...` for total match count.
+   - Executes `SELECT ... FROM orders o ... ORDER BY <allowlisted_column> <ASC/DESC>, o.id DESC LIMIT $limit OFFSET $offset`.
+   - Performs batch loading of associated `order_lines` and `order_collaborators` for the paginated slice.
+5. **Response**: Returns HTTP 200 with `{ status: 'success', data: { orders, total, page, limit, totalPages, count } }`.
+
 ---
 
-## 4. What We Decided *Not* to Build in Phase 6
-- **No Advanced Search/Filter/Sort/Pagination Yet**: Full server-side table search, status/waiter/date filters, multi-column sorting, and pagination metadata are scheduled for Phase 7.
-- **No Bulk Actions or CSV Export Yet**: Bulk menu item changes and daily CSV order export are scheduled for Phase 7.
+## 4. What We Decided *Not* to Build in Phase 7
+- **No Bulk Actions or CSV Export Yet**: Bulk menu item changes and daily CSV order export are scheduled for Phase 8.
 - **No Dashboard Analytics Yet**: Landing metrics and 14-day served charts are scheduled for Phase 8.
-- **No Immutable Audit/History Timeline Yet**: Audit event tracking is scheduled for Phase 8.
-- **No Slow-Order Alerts Yet**: Background threshold alerts and alert acknowledgement are scheduled for Phase 9.
+- **No Immutable Audit/History Timeline Yet**: Audit event tracking is scheduled for Phase 9.
+- **No Slow-Order Alerts Yet**: Background threshold alerts and alert acknowledgement are scheduled for Phase 10.
+
 

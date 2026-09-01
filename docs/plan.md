@@ -42,21 +42,30 @@
   - Created centralized authorization engine `order.auth.ts` (`canAccessOrder`, `canModifyOrder`, `canManageCollaborators`) strictly enforcing that only primary waiters and managers can manage collaborators, and only assigned collaborators, primary waiters, and managers can access/modify orders.
   - Built collaborator endpoints (`GET /api/orders/eligible-waiters`, `GET /api/orders/:id/collaborators`, `POST /api/orders/:id/collaborators`, `DELETE /api/orders/:id/collaborators/:userId`) and integrated authorization across all order routes.
   - Built frontend collaborator UI in `OrderList.tsx` with Primary Waiter / Collaborator badges, expanded card Collaborators panel with team tags and remove buttons, and an Add Collaborator modal with eligible waiter dropdown.
-  - Created 27 new backend automated test cases (`tests/collaborators.test.ts`) and 4 new frontend test cases (`tests/Collaborators.test.tsx`), bringing total test suite to 115 passing automated tests (89 backend, 26 frontend).
+- **Session 7: Order Finding / Search, Filter, Sort & Server-Side Pagination (Phase 7)**
+  - Implemented server-side text search over table numbers (`search` with `ILIKE` pattern matching).
+  - Implemented multi-criteria filtering by order status (`status`), waiter ID (`waiterId` matching primary waiter or assigned collaborator), and calendar date (`date` with `YYYY-MM-DD`).
+  - Implemented multi-field server-side sorting by placed time (`createdAt`), status (`status`), and table number (`tableNumber`), supporting ascending and descending directions with deterministic tiebreakers.
+  - Implemented server-side pagination with query parameters `page` ($\ge 1$) and `limit` ($1..100$), returning total count, page number, limit, and computed `totalPages`.
+  - Enforced strict server-side access scoping: Waiters can only search and filter within orders where they are the primary waiter or an assigned collaborator (`accessibleWaiterId`).
+  - Built comprehensive query validation in `orderQuerySchema` using Zod.
+  - Built frontend Search & Filter Toolbar in `OrderList.tsx` with responsive grid inputs for table search, status filter, waiter filter (populated from eligible waitstaff), date picker, sort controls, and a reset filters button.
+  - Built frontend pagination controls displaying "Showing X to Y of Z orders", page navigation buttons (Previous/Next), and page size selector.
+  - Created 17 new backend automated test cases (`tests/order-search.test.ts`) and 6 new frontend test cases (`tests/OrderSearch.test.tsx`), bringing total test suite to 138 passing automated tests (106 backend, 32 frontend).
 - **Future Sessions (Planned)**
-  - Session 7: Order Search, Filter, Sort & Server-Side Pagination, Bulk Menu Operations & CSV Export (Phase 7)
-  - Session 8: Dashboard Analytics & Audit/History Event Timeline (Phase 8)
+  - Session 8: Bulk Menu Operations & CSV Export, Dashboard Analytics & Audit Timeline (Phase 8)
   - Session 9: Slow-Order Alert System (Phase 9)
 
 ---
 
 ## 2. Order of Implementation and Rationale
-1. **Relational Schema Migration**: Defined `order_collaborators` junction table with foreign keys and unique constraint first to establish data consistency.
-2. **Centralized Authorization Helper**: Encapsulated access rules in `order.auth.ts` before modifying service methods to avoid duplicated logic.
-3. **Repository & Service Layer**: Integrated collaborator queries and scoped order listing in `OrderRepository` and `OrderService`.
-4. **Backend Automated Tests**: Created 27 comprehensive tests in `tests/collaborators.test.ts` validating all collaborator permutations and security edge cases.
-5. **Frontend Services & UI**: Extended API client and built badges, expanded collaborator tags, and assignment dialogs in `OrderList.tsx`.
-6. **Frontend Integration Tests**: Validated UI rendering, badges, modal interactions, and permissions in `client/tests/Collaborators.test.tsx`.
+1. **Server Types & Zod Validator**: Defined query filter interfaces and Zod schema with string normalization, coercion, and allowlist validation first.
+2. **Repository & Service Layer**: Implemented `findPaginated` in `OrderRepository` with atomic parameterized SQL queries and dual-mode in-memory fallback, and updated `OrderService.listOrders` to enforce caller role scoping.
+3. **Route Integration**: Updated `GET /api/orders` to return paginated response structure with `orders`, `total`, `page`, `limit`, `totalPages`, and `count`.
+4. **Backend Automated Tests**: Created 17 tests in `tests/order-search.test.ts` validating all search, filter, sort, pagination, access scoping, and validation permutations.
+5. **Frontend Services & UI**: Extended `fetchOrdersApi` and built the responsive Search & Filter toolbar and pagination footer in `OrderList.tsx`.
+6. **Frontend Integration Tests**: Validated UI rendering, search/filter inputs, sort options, reset buttons, and pagination controls in `client/tests/OrderSearch.test.tsx`.
+
 
 ---
 

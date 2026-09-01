@@ -30,16 +30,53 @@ export const createOrderSchema = z.object({
 });
 
 export const orderQuerySchema = z.object({
-  primaryWaiterId: z.string().regex(uuidRegex, 'Invalid waiter ID').optional(),
+  search: z.string().trim().max(50, 'Search query cannot exceed 50 characters').optional(),
+  tableNumber: z.string().trim().max(50).optional(),
   status: z
     .enum(['placed', 'accepted', 'preparing', 'ready', 'served', 'cancelled'])
     .optional(),
+  waiterId: z.string().regex(uuidRegex, 'Invalid waiter ID').optional(),
+  primaryWaiterId: z.string().regex(uuidRegex, 'Invalid waiter ID').optional(),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
+    .optional(),
+  sortBy: z
+    .enum(['createdAt', 'created_at', 'status', 'tableNumber', 'table_number', 'table', 'time'])
+    .optional()
+    .default('createdAt')
+    .transform((val): 'createdAt' | 'status' | 'tableNumber' => {
+      if (val === 'tableNumber' || val === 'table_number' || val === 'table') return 'tableNumber';
+      if (val === 'status') return 'status';
+      return 'createdAt';
+    }),
+
+  sortOrder: z
+    .enum(['asc', 'desc', 'ASC', 'DESC'])
+    .optional()
+    .default('desc')
+    .transform((val): 'asc' | 'desc' => (val.toLowerCase() === 'asc' ? 'asc' : 'desc')),
+  page: z
+    .coerce
+    .number()
+    .int('Page must be an integer')
+    .min(1, 'Page must be at least 1')
+    .optional()
+    .default(1),
+  limit: z
+    .coerce
+    .number()
+    .int('Limit must be an integer')
+    .min(1, 'Limit must be at least 1')
+    .max(100, 'Limit cannot exceed 100')
+    .optional()
+    .default(10),
   isArchived: z
     .enum(['true', 'false'])
     .transform((val) => val === 'true')
     .optional(),
-  tableNumber: z.string().trim().max(50).optional(),
 });
+
 
 export const updateOrderStatusSchema = z.object({
   status: z.enum(['placed', 'accepted', 'preparing', 'ready', 'served', 'cancelled'], {

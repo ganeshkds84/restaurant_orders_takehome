@@ -124,7 +124,21 @@ describe('Order Creation & Order Lines Frontend UI (Phase 4)', () => {
           });
         }
 
+        // Eligible waiters
+        if (url.includes('/orders/eligible-waiters')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                status: 'success',
+                data: { waiters: [mockWaiterUser] },
+              }),
+          });
+        }
+
         // Orders GET
+
         if (url.includes('/orders') && (!options || options.method === 'GET' || !options.method)) {
           return Promise.resolve({
             ok: true,

@@ -9,9 +9,12 @@ import {
   OrderWithLines,
   OrderQueryFilters,
   OrderStatus,
+  OrderSortField,
+  PaginatedOrdersResult,
 } from '../types/order.js';
 import { logger } from '../logging/logger.js';
 import crypto from 'crypto';
+
 
 
 export function mapToOrderLine(dbLine: DbOrderLine): OrderLine {
@@ -328,20 +331,36 @@ export class OrderRepository {
     }
   }
 
-  async findAll(filters: OrderQueryFilters = {}): Promise<OrderWithLines[]> {
+  async findPaginated(filters: OrderQueryFilters = {}): Promise<PaginatedOrdersResult> {
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.max(1, Math.min(100, filters.limit || 10));
+    const offset = (page - 1) * limit;
+
     try {
       const conditions: string[] = [];
       const values: unknown[] = [];
 
+      // Enforced caller access scoping for Waiters
+      if (filters.accessibleWaiterId) {
+        values.push(filters.accessibleWaiterId);
+        const pAccess = values.length;
+        conditions.push(
+          `(o.primary_waiter_id = $${pAccess} OR o.id IN (SELECT order_id FROM order_collaborators WHERE user_id = $${pAccess}))`
+        );
+      }
+
+      // Explicit waiter filter (e.g. manager filtering by specific waiter)
+      if (filters.waiterId) {
+        values.push(filters.waiterId);
+        const pWaiter = values.length;
+        conditions.push(
+          `(o.primary_waiter_id = $${pWaiter} OR o.id IN (SELECT order_id FROM order_collaborators WHERE user_id = $${pWaiter}))`
+        );
+      }
+
       if (filters.primaryWaiterId) {
         values.push(filters.primaryWaiterId);
         conditions.push(`o.primary_waiter_id = $${values.length}`);
-      }
-
-      if (filters.waiterId) {
-        values.push(filters.waiterId);
-        const p1 = values.length;
-        conditions.push(`(o.primary_waiter_id = $${p1} OR o.id IN (SELECT order_id FROM order_collaborators WHERE user_id = $${p1}))`);
       }
 
       if (filters.status) {
@@ -354,23 +373,73 @@ export class OrderRepository {
         conditions.push(`o.is_archived = $${values.length}`);
       }
 
-      if (filters.tableNumber) {
-        values.push(`%${filters.tableNumber.trim()}%`);
+      // Search over table number
+      const searchText = (filters.search || filters.tableNumber || '').trim();
+      if (searchText) {
+        values.push(`%${searchText}%`);
         conditions.push(`o.table_number ILIKE $${values.length}`);
       }
 
+      // Date filter (YYYY-MM-DD)
+      if (filters.date) {
+        values.push(filters.date);
+        conditions.push(`o.created_at::date = $${values.length}::date`);
+      }
+
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      // Count total matching orders
+      const countQuery = `
+        SELECT COUNT(DISTINCT o.id)::int AS total
+        FROM orders o
+        ${whereClause}
+      `;
+      const { rows: countRows } = await dbPool.query(countQuery, values);
+      const total = countRows.length > 0 ? parseInt(String(countRows[0].total), 10) : 0;
+
+      if (total === 0) {
+        return {
+          orders: [],
+          total: 0,
+          page,
+          limit,
+          totalPages: 0,
+        };
+      }
+
+      // Sort allowlist
+      const sortColumnMap: Record<OrderSortField, string> = {
+        createdAt: 'o.created_at',
+        status: 'o.status',
+        tableNumber: 'o.table_number',
+      };
+      const sortColumn = sortColumnMap[filters.sortBy || 'createdAt'] || 'o.created_at';
+      const sortDirection = (filters.sortOrder || 'desc').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+      const selectValues = [...values, limit, offset];
+      const pLimit = selectValues.length - 1;
+      const pOffset = selectValues.length;
+
       const orderQuery = `
         SELECT o.id, o.table_number, o.primary_waiter_id, o.status, o.is_archived, o.total_price, o.created_at, o.updated_at,
                u.name AS primary_waiter_name, u.email AS primary_waiter_email
         FROM orders o
         LEFT JOIN users u ON o.primary_waiter_id = u.id
         ${whereClause}
-        ORDER BY o.created_at DESC
+        ORDER BY ${sortColumn} ${sortDirection}, o.id DESC
+        LIMIT $${pLimit} OFFSET $${pOffset}
       `;
 
-      const { rows: orderRows } = await dbPool.query(orderQuery, values);
-      if (orderRows.length === 0) return [];
+      const { rows: orderRows } = await dbPool.query(orderQuery, selectValues);
+      if (orderRows.length === 0) {
+        return {
+          orders: [],
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        };
+      }
 
       const orderIds = orderRows.map((r: { id: string }) => r.id);
       const linesQuery = `
@@ -407,23 +476,42 @@ export class OrderRepository {
         collabsByOrderId.set(mapped.orderId, list);
       }
 
-      return (orderRows as DbOrder[]).map((order) =>
+      const orders = (orderRows as DbOrder[]).map((order) =>
         mapToOrder(
           order,
           linesByOrderId.get(order.id) || [],
           collabsByOrderId.get(order.id) || []
         )
       );
+
+      return {
+        orders,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      };
     } catch (err) {
       if (isConnectionError(err)) {
-        logger.debug('PostgreSQL unavailable; finding orders in memory');
-        let orders = Array.from(memoryOrders.values());
+        logger.debug('PostgreSQL unavailable; searching orders in memory');
+        let matched = Array.from(memoryOrders.values());
 
-        if (filters.primaryWaiterId) {
-          orders = orders.filter((o) => o.primary_waiter_id === filters.primaryWaiterId);
+        // Enforced caller access scoping for Waiters
+        if (filters.accessibleWaiterId) {
+          matched = matched.filter((o) => {
+            if (o.primary_waiter_id === filters.accessibleWaiterId) return true;
+            for (const col of memoryOrderCollaborators.values()) {
+              if (col.order_id === o.id && col.user_id === filters.accessibleWaiterId) {
+                return true;
+              }
+            }
+            return false;
+          });
         }
+
+        // Explicit waiter filter
         if (filters.waiterId) {
-          orders = orders.filter((o) => {
+          matched = matched.filter((o) => {
             if (o.primary_waiter_id === filters.waiterId) return true;
             for (const col of memoryOrderCollaborators.values()) {
               if (col.order_id === o.id && col.user_id === filters.waiterId) {
@@ -433,22 +521,65 @@ export class OrderRepository {
             return false;
           });
         }
+
+        if (filters.primaryWaiterId) {
+          matched = matched.filter((o) => o.primary_waiter_id === filters.primaryWaiterId);
+        }
+
         if (filters.status) {
-          orders = orders.filter((o) => o.status === filters.status);
+          matched = matched.filter((o) => o.status === filters.status);
         }
+
         if (filters.isArchived !== undefined) {
-          orders = orders.filter((o) => o.is_archived === filters.isArchived);
-        }
-        if (filters.tableNumber) {
-          const search = filters.tableNumber.trim().toLowerCase();
-          orders = orders.filter((o) => o.table_number.toLowerCase().includes(search));
+          matched = matched.filter((o) => o.is_archived === filters.isArchived);
         }
 
-        orders.sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
+        const searchText = (filters.search || filters.tableNumber || '').trim().toLowerCase();
+        if (searchText) {
+          matched = matched.filter((o) => o.table_number.toLowerCase().includes(searchText));
+        }
 
-        return orders.map((order) => {
+        if (filters.date) {
+          matched = matched.filter((o) => {
+            const orderDateStr = new Date(o.created_at).toISOString().slice(0, 10);
+            return orderDateStr === filters.date;
+          });
+        }
+
+        const total = matched.length;
+        if (total === 0) {
+          return {
+            orders: [],
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          };
+        }
+
+        // In-memory sort
+        const sortBy = filters.sortBy || 'createdAt';
+        const sortOrder = filters.sortOrder || 'desc';
+        const dirMultiplier = sortOrder === 'asc' ? 1 : -1;
+
+        matched.sort((a, b) => {
+          if (sortBy === 'tableNumber') {
+            const cmp = a.table_number.localeCompare(b.table_number);
+            if (cmp !== 0) return cmp * dirMultiplier;
+          } else if (sortBy === 'status') {
+            const cmp = a.status.localeCompare(b.status);
+            if (cmp !== 0) return cmp * dirMultiplier;
+          } else {
+            const timeA = new Date(a.created_at).getTime();
+            const timeB = new Date(b.created_at).getTime();
+            if (timeA !== timeB) return (timeA - timeB) * dirMultiplier;
+          }
+          return b.id.localeCompare(a.id); // Tiebreaker
+        });
+
+        const paged = matched.slice(offset, offset + limit);
+
+        const orders = paged.map((order) => {
           const lines = Array.from(memoryOrderLines.values())
             .filter((l) => l.order_id === order.id)
             .sort(
@@ -465,10 +596,24 @@ export class OrderRepository {
 
           return mapToOrder(order, lines, collabs);
         });
+
+        return {
+          orders,
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        };
       }
       throw err;
     }
   }
+
+  async findAll(filters: OrderQueryFilters = {}): Promise<OrderWithLines[]> {
+    const paginated = await this.findPaginated({ ...filters, limit: 1000 });
+    return paginated.orders;
+  }
+
 
   async updateOrderStatus(
     orderId: string,

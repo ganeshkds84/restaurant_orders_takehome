@@ -94,3 +94,18 @@ Log of decisions that shaped this codebase — where a real alternative existed 
 - **Rejected:** Writing ad-hoc `if (user.id === order.primary_waiter_id || ...)` conditionals across multiple route handlers and service methods.
 - **Why:** Consolidating authorization rules ensures consistent permission enforcement across single order views, listing, line operations, lifecycle mutations, and collaborator management. It prevents privilege escalation bugs and makes security rules easy to audit and unit test independently.
 
+---
+
+## Decision 14: Server-Side Search, Filter, and Pagination vs. Client-Side In-Memory Filtering
+- **Chose:** Executing all table text searching, status/waiter/date filtering, sorting, and pagination strictly on the server database (`LIMIT`/`OFFSET` and `COUNT(*)`).
+- **Rejected:** Loading every restaurant order into the browser and filtering/paginating in client JavaScript.
+- **Why:** In a production restaurant environment with thousands of historical orders, shipping entire datasets over the wire consumes massive bandwidth, slows initial page load, and exposes unauthorized records to client inspection. Server-side processing guarantees constant response latency, minimal payload sizes, and authoritative security scoping.
+
+---
+
+## Decision 15: Strict SQL Sort Column Allowlist vs. Raw Column Interpolation
+- **Chose:** Explicit dictionary mapping for sort fields (`createdAt` $\to$ `o.created_at`, `status` $\to$ `o.status`, `tableNumber` $\to$ `o.table_number`) with deterministic tie-breaker `, o.id DESC`.
+- **Rejected:** Direct string interpolation of user-supplied `sortBy` parameters into SQL `ORDER BY` clauses.
+- **Why:** Direct string interpolation in SQL clauses opens dangerous SQL injection vulnerabilities. Using an explicit enum allowlist verified by Zod and mapped in repository code ensures complete security against SQL injection while delivering deterministic, stable sorting across page boundaries.
+
+
