@@ -332,3 +332,40 @@ Implement ONLY Goal 9 from the ORIGINAL TAKE-HOME ASSIGNMENT SPECIFICATION:
 2. **Menu Item Category Invariant**: Added required `category` fields (`Mains`, `Beverages`, `Desserts`) to menu seed calls in `timeline.test.ts` to satisfy database and domain constraints.
 3. **Manager Name Seed Alignment**: Fixed manager display name assertion in `timeline.test.ts` to match the repository's seeded user name (`Alex Rivera (Manager)`).
 4. **Test Query Exactness**: Used `getAllByText` in frontend timeline tests when querying items displayed in both active lines and timeline event summaries.
+
+---
+
+## Phase 11 — Slow-Order Alerts (Goal 10)
+
+### Prompt
+```
+# Phase 11 — Slow-Order Alerts (Goal 10)
+
+We are continuing the Restaurant Orders take-home assignment.
+Implement ONLY Goal 10 from the ORIGINAL TAKE-HOME ASSIGNMENT SPECIFICATION:
+* 10. Slow-order alerts. An order that has been open for more than a set number of minutes without reaching Ready appears in an alerts area, with a count badge visible in the navigation. A waiter or manager can acknowledge the alert for that order, clearing it from the list. If the order is still not Ready a further set number of minutes later, the alert returns.
+* Do NOT implement stretch ideas yet.
+* Do NOT rewrite working architecture from previous phases.
+* Preserve all existing functionality from Phases 1–10.
+* Do NOT commit or push anything.
+* Return a clear walkthrough of exactly what was implemented and the verification results.
+```
+
+### What you got
+- Database migration `006_create_order_alert_acknowledgements.sql` creating table `order_alert_acknowledgements` with compound index `(order_id, acknowledged_at DESC)`.
+- Server-side dynamic elapsed time computation (`EXTRACT(EPOCH FROM (NOW() - o.created_at)) / 60.0 > thresholdMinutes`) for open orders (`placed`, `accepted`, `preparing`), excluding `ready`, `served`, `cancelled`, and archived orders.
+- Relational acknowledgement suppression and re-alert calculation:
+  - Initial alert triggers when elapsed time exceeds 15 minutes (`thresholdMinutes`).
+  - Staff acknowledgement immediately clears the order from active alerts.
+  - If the order remains open past 15 minutes following acknowledgement (`reAlertMinutes`), the alert returns with `isReAlert: true`.
+- REST endpoints `GET /api/orders/alerts` and `POST /api/orders/:id/alerts/acknowledge` scoped by centralized RBAC (`order.auth.ts`).
+- Interactive frontend `AlertsView.tsx` component with real-time timer calculations, overdue badges, re-alert banners, table numbers, waiter information, and acknowledgement modals.
+- Top navigation bar "Alerts" tab with live count badge updated via background polling and user actions.
+- 11 new backend automated test cases (`tests/alerts.test.ts`) and 5 new frontend automated test cases (`tests/Alerts.test.tsx`), bringing the total repository test suite to 200 passing automated tests (148 backend, 52 frontend).
+
+### What you corrected
+1. **Order Repository In-Memory Unit Price Formatting**: Added `Number(line.unitPrice).toFixed(2)` safeguard in `createOrderInMemory` to handle both numerical and string price inputs gracefully.
+2. **Order Status Transition Signature in Tests**: Aligned `updateOrderStatus` test calls with the repository signature `updateOrderStatus(orderId, expectedStatus, targetStatus, actorData, reason)`.
+3. **Frontend Auth Mock Initialization**: Stubbed `/auth/me` in `Alerts.test.tsx` `beforeEach` to guarantee `AuthProvider` token retention throughout modal lifecycle simulations.
+4. **Unused React Import Cleanup**: Cleaned up unused `React` import in `Alerts.test.tsx` to satisfy `tsc --noEmit` build checks.
+

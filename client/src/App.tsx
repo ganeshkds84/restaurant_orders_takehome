@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout';
 import { LoginForm } from './components/LoginForm';
@@ -7,12 +7,35 @@ import { MenuManagement } from './components/MenuManagement';
 import { OrderCreation } from './components/OrderCreation';
 import { OrderList } from './components/OrderList';
 import { DashboardView } from './components/DashboardView';
+import { AlertsView } from './components/AlertsView';
 import { HealthStatus } from './components/HealthStatus';
-import { UtensilsCrossed, ShieldCheck, ShoppingBag, Receipt, LayoutDashboard } from 'lucide-react';
+import { fetchSlowOrderAlerts } from './services/alert.service';
+import { UtensilsCrossed, ShieldCheck, ShoppingBag, Receipt, LayoutDashboard, AlertTriangle } from 'lucide-react';
 
 const MainContent: React.FC = () => {
-  const { isAuthenticated, isLoading, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'menu' | 'create-order' | 'orders' | 'rbac'>('menu');
+  const { isAuthenticated, isLoading, user, token } = useAuth();
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'alerts' | 'create-order' | 'orders' | 'menu' | 'rbac'>('menu');
+  const [alertCount, setAlertCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!token || !isAuthenticated) {
+      setAlertCount(0);
+      return;
+    }
+
+    const checkAlerts = async () => {
+      try {
+        const res = await fetchSlowOrderAlerts(token);
+        setAlertCount(res.count);
+      } catch {
+        // silent fail on background poll
+      }
+    };
+
+    checkAlerts();
+    const interval = setInterval(checkAlerts, 30000);
+    return () => clearInterval(interval);
+  }, [token, isAuthenticated]);
 
   if (isLoading) {
     return (
@@ -105,6 +128,47 @@ const MainContent: React.FC = () => {
             >
               <LayoutDashboard size={18} color={activeTab === 'dashboard' ? 'var(--accent-primary)' : 'currentColor'} />
               <span>Dashboard</span>
+            </button>
+
+            <button
+              id="tab-alerts"
+              data-testid="tab-alerts"
+              onClick={() => setActiveTab('alerts')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.6rem 1.2rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.9375rem',
+                fontWeight: activeTab === 'alerts' ? 600 : 400,
+                backgroundColor: activeTab === 'alerts' ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                color: activeTab === 'alerts' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                border: activeTab === 'alerts' ? '1px solid var(--border-focus)' : '1px solid transparent',
+                cursor: 'pointer',
+                transition: 'var(--transition-fast)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <AlertTriangle size={18} color={alertCount > 0 ? '#f59e0b' : (activeTab === 'alerts' ? 'var(--accent-primary)' : 'currentColor')} />
+              <span>Alerts</span>
+              {alertCount > 0 && (
+                <span
+                  className="badge"
+                  data-testid="nav-alert-count-badge"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.25)',
+                    color: '#f87171',
+                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    padding: '0.1rem 0.45rem',
+                    borderRadius: 'var(--radius-full)',
+                  }}
+                >
+                  {alertCount}
+                </span>
+              )}
             </button>
 
             <button
@@ -206,6 +270,7 @@ const MainContent: React.FC = () => {
 
           {/* Active Tab Content */}
           {activeTab === 'dashboard' && <DashboardView />}
+          {activeTab === 'alerts' && <AlertsView onAlertCountChange={setAlertCount} />}
           {activeTab === 'create-order' && <OrderCreation onOrderCreated={() => {}} />}
           {activeTab === 'orders' && <OrderList />}
           {activeTab === 'menu' && <MenuManagement />}

@@ -17,6 +17,12 @@ import {
   OrderAuditEvent,
   RecordAuditEventInput,
 } from '../types/timeline.js';
+import {
+  SlowOrderAlert,
+  SlowOrderAlertsResponse,
+  OrderAlertAcknowledgement,
+  DbOrderAlertAcknowledgement,
+} from '../types/alert.js';
 import { logger } from '../logging/logger.js';
 import crypto from 'crypto';
 
@@ -140,6 +146,7 @@ const memoryOrders: Map<string, DbOrder> = new Map();
 const memoryOrderLines: Map<string, DbOrderLine> = new Map();
 const memoryOrderCollaborators: Map<string, DbOrderCollaborator> = new Map();
 const memoryOrderAuditEvents: Map<string, DbOrderAuditEvent[]> = new Map();
+const memoryAlertAcknowledgements: Map<string, DbOrderAlertAcknowledgement[]> = new Map();
 
 
 function isConnectionError(err: unknown): boolean {
@@ -297,7 +304,7 @@ export class OrderRepository {
         menu_item_id: line.menuItemId,
         item_name: line.itemName,
         quantity: line.quantity,
-        unit_price: line.unitPrice.toFixed(2),
+        unit_price: Number(line.unitPrice).toFixed(2),
         special_instructions: line.specialInstructions || '',
         is_voided: false,
         void_reason: null,
@@ -1311,11 +1318,269 @@ export class OrderRepository {
     return all;
   }
 
+  async getSlowOrderAlerts(params: {
+    waiterId?: string;
+    thresholdMinutes?: number;
+    reAlertMinutes?: number;
+  }): Promise<SlowOrderAlertsResponse> {
+    const thresholdMinutes = params.thresholdMinutes ?? 15;
+    const reAlertMinutes = params.reAlertMinutes ?? 15;
+
+    try {
+      const values: unknown[] = [thresholdMinutes, reAlertMinutes];
+      let waiterFilterSql = '';
+      if (params.waiterId) {
+        values.push(params.waiterId);
+        waiterFilterSql = ` AND (o.primary_waiter_id = $${values.length} OR EXISTS (SELECT 1 FROM order_collaborators oc WHERE oc.order_id = o.id AND oc.user_id = $${values.length}))`;
+      }
+
+      const query = `
+        WITH latest_acks AS (
+          SELECT DISTINCT ON (order_id)
+            order_id,
+            user_id,
+            acknowledged_at
+          FROM order_alert_acknowledgements
+          ORDER BY order_id, acknowledged_at DESC
+        )
+        SELECT
+          o.id,
+          o.table_number,
+          o.status,
+          o.primary_waiter_id,
+          u.name AS primary_waiter_name,
+          o.total_price,
+          o.created_at,
+          (EXTRACT(EPOCH FROM (NOW() - o.created_at)) / 60.0) AS elapsed_minutes,
+          la.acknowledged_at AS last_acknowledged_at,
+          ack_u.name AS last_acknowledged_by_name,
+          (EXTRACT(EPOCH FROM (NOW() - la.acknowledged_at)) / 60.0) AS elapsed_since_ack_minutes
+        FROM orders o
+        JOIN users u ON u.id = o.primary_waiter_id
+        LEFT JOIN latest_acks la ON la.order_id = o.id
+        LEFT JOIN users ack_u ON ack_u.id = la.user_id
+        WHERE o.status IN ('placed', 'accepted', 'preparing')
+          AND o.is_archived = FALSE
+          AND (EXTRACT(EPOCH FROM (NOW() - o.created_at)) / 60.0) > $1
+          AND (
+            la.acknowledged_at IS NULL
+            OR (EXTRACT(EPOCH FROM (NOW() - la.acknowledged_at)) / 60.0) > $2
+          )
+          ${waiterFilterSql}
+        ORDER BY o.created_at ASC;
+      `;
+
+      const { rows } = await dbPool.query(query, values);
+
+      // Collect all order IDs for collaborator lookup
+      const orderIds = rows.map((r: any) => r.id);
+      let collaboratorsByOrderId: Map<string, Array<{ id: string; name: string }>> = new Map();
+
+      if (orderIds.length > 0) {
+        const collabQuery = `
+          SELECT oc.order_id, u.id AS user_id, u.name
+          FROM order_collaborators oc
+          JOIN users u ON u.id = oc.user_id
+          WHERE oc.order_id = ANY($1::uuid[])
+        `;
+        const collabRes = await dbPool.query(collabQuery, [orderIds]);
+        for (const c of collabRes.rows) {
+          const list = collaboratorsByOrderId.get(c.order_id) || [];
+          list.push({ id: c.user_id, name: c.name });
+          collaboratorsByOrderId.set(c.order_id, list);
+        }
+      }
+
+      const alerts: SlowOrderAlert[] = rows.map((r: any) => {
+        const elapsedMinutes = Math.round((parseFloat(r.elapsed_minutes) || 0) * 10) / 10;
+        const overdueMinutes = Math.max(0, Math.round((elapsedMinutes - thresholdMinutes) * 10) / 10);
+        const isReAlert = Boolean(r.last_acknowledged_at);
+        const totalPrice = typeof r.total_price === 'number' ? r.total_price : parseFloat(String(r.total_price));
+
+        return {
+          orderId: r.id,
+          tableNumber: r.table_number,
+          status: r.status as OrderStatus,
+          primaryWaiterId: r.primary_waiter_id,
+          primaryWaiterName: r.primary_waiter_name,
+          totalPrice: Math.round(totalPrice * 100) / 100,
+          createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+          elapsedMinutes,
+          thresholdMinutes,
+          overdueMinutes,
+          isReAlert,
+          lastAcknowledgedAt: r.last_acknowledged_at ? (r.last_acknowledged_at instanceof Date ? r.last_acknowledged_at.toISOString() : String(r.last_acknowledged_at)) : null,
+          lastAcknowledgedByName: r.last_acknowledged_by_name || null,
+          collaborators: collaboratorsByOrderId.get(r.id) || [],
+        };
+      });
+
+      return {
+        alerts,
+        count: alerts.length,
+        thresholdMinutes,
+        reAlertMinutes,
+      };
+    } catch (err) {
+      if (isConnectionError(err)) {
+        return this.getSlowOrderAlertsFromMemory(params);
+      }
+      throw err;
+    }
+  }
+
+  private getSlowOrderAlertsFromMemory(params: {
+    waiterId?: string;
+    thresholdMinutes?: number;
+    reAlertMinutes?: number;
+  }): SlowOrderAlertsResponse {
+    const thresholdMinutes = params.thresholdMinutes ?? 15;
+    const reAlertMinutes = params.reAlertMinutes ?? 15;
+    const now = Date.now();
+
+    const matchingOrders: SlowOrderAlert[] = [];
+
+    const activeOrders = Array.from(memoryOrders.values()).filter(
+      (o) => ['placed', 'accepted', 'preparing'].includes(o.status) && !o.is_archived
+    );
+
+    // Sort by created_at ASC
+    activeOrders.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+    for (const order of activeOrders) {
+      const orderCreatedAt = new Date(order.created_at).getTime();
+      const elapsedMinutes = (now - orderCreatedAt) / (1000 * 60);
+
+      // Check threshold: strictly greater than
+      if (elapsedMinutes <= thresholdMinutes) {
+        continue;
+      }
+
+      // Check latest acknowledgement
+      const acks = memoryAlertAcknowledgements.get(order.id) || [];
+      acks.sort((a, b) => new Date(b.acknowledged_at).getTime() - new Date(a.acknowledged_at).getTime());
+      const latestAck = acks[0];
+
+      let isReAlert = false;
+      if (latestAck) {
+        const elapsedSinceAck = (now - new Date(latestAck.acknowledged_at).getTime()) / (1000 * 60);
+        if (elapsedSinceAck <= reAlertMinutes) {
+          // Cleared / suppressed
+          continue;
+        }
+        isReAlert = true;
+      }
+
+      // Check waiter scoping
+      if (params.waiterId) {
+        const isPrimary = order.primary_waiter_id === params.waiterId;
+        const collabs = Array.from(memoryOrderCollaborators.values()).filter((c) => c.order_id === order.id);
+        const isCollab = collabs.some((c) => c.user_id === params.waiterId);
+
+        if (!isPrimary && !isCollab) {
+          continue;
+        }
+      }
+
+      const collabs = Array.from(memoryOrderCollaborators.values())
+        .filter((c) => c.order_id === order.id)
+        .map((c) => ({ id: c.user_id, name: c.user_name || c.user_id }));
+
+      const totalPrice = typeof order.total_price === 'number' ? order.total_price : parseFloat(String(order.total_price));
+      const roundedElapsed = Math.round(elapsedMinutes * 10) / 10;
+      const overdueMinutes = Math.max(0, Math.round((roundedElapsed - thresholdMinutes) * 10) / 10);
+
+      matchingOrders.push({
+        orderId: order.id,
+        tableNumber: order.table_number,
+        status: order.status as OrderStatus,
+        primaryWaiterId: order.primary_waiter_id,
+        primaryWaiterName: order.primary_waiter_name || 'Primary Waiter',
+        totalPrice: Math.round(totalPrice * 100) / 100,
+        createdAt: new Date(order.created_at).toISOString(),
+        elapsedMinutes: roundedElapsed,
+        thresholdMinutes,
+        overdueMinutes,
+        isReAlert,
+        lastAcknowledgedAt: latestAck ? new Date(latestAck.acknowledged_at).toISOString() : null,
+        lastAcknowledgedByName: null,
+        collaborators: collabs,
+      });
+    }
+
+    return {
+      alerts: matchingOrders,
+      count: matchingOrders.length,
+      thresholdMinutes,
+      reAlertMinutes,
+    };
+  }
+
+  async acknowledgeSlowOrderAlert(
+    orderId: string,
+    userId: string,
+    notes?: string
+  ): Promise<OrderAlertAcknowledgement> {
+    try {
+      const query = `
+        INSERT INTO order_alert_acknowledgements (
+          order_id,
+          user_id,
+          acknowledged_at,
+          notes
+        )
+        VALUES ($1, $2, NOW(), $3)
+        RETURNING id, order_id, user_id, acknowledged_at, notes;
+      `;
+      const { rows } = await dbPool.query(query, [orderId, userId, notes || null]);
+      const row = rows[0] as DbOrderAlertAcknowledgement;
+      return {
+        id: row.id,
+        orderId: row.order_id,
+        userId: row.user_id,
+        acknowledgedAt: row.acknowledged_at instanceof Date ? row.acknowledged_at.toISOString() : String(row.acknowledged_at),
+        notes: row.notes,
+      };
+    } catch (err) {
+      if (isConnectionError(err)) {
+        const id = crypto.randomUUID();
+        const now = new Date();
+        const dbAck: DbOrderAlertAcknowledgement = {
+          id,
+          order_id: orderId,
+          user_id: userId,
+          acknowledged_at: now,
+          notes: notes || null,
+        };
+        const list = memoryAlertAcknowledgements.get(orderId) || [];
+        list.push(dbAck);
+        memoryAlertAcknowledgements.set(orderId, list);
+        return {
+          id: dbAck.id,
+          orderId: dbAck.order_id,
+          userId: dbAck.user_id,
+          acknowledgedAt: dbAck.acknowledged_at.toISOString(),
+          notes: dbAck.notes,
+        };
+      }
+      throw err;
+    }
+  }
+
+  getAllAlertAcknowledgementsForMemory(): DbOrderAlertAcknowledgement[] {
+    const all: DbOrderAlertAcknowledgement[] = [];
+    for (const list of memoryAlertAcknowledgements.values()) {
+      all.push(...list);
+    }
+    return all;
+  }
+
   resetMemoryStore(): void {
     memoryOrders.clear();
     memoryOrderLines.clear();
     memoryOrderCollaborators.clear();
     memoryOrderAuditEvents.clear();
+    memoryAlertAcknowledgements.clear();
   }
 
   // Testing helper for clean in-memory state

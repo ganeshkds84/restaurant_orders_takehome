@@ -136,6 +136,13 @@ Log of decisions that shaped this codebase — where a real alternative existed 
 - **Rejected:** Mutating existing audit rows, storing audit entries as mutable JSON columns on `orders`, or exposing any `PUT`/`PATCH`/`DELETE` API endpoints for timeline records.
 - **Why:** Goal 9 states: *"Every order has a timeline showing every status change with the old and new status and who made it, every line added or voided with its reason, and any notes left on it. Nothing in this timeline can be edited or deleted after the fact, including by managers."* An append-only relational ledger with transactional write coupling guarantees tamper-proof audit trails, eliminates false-positive event creation on rejected requests, and provides $O(\log N)$ indexed chronological retrieval.
 
+---
+
+## Decision 20: Dynamic Server-Side Elapsed Time Calculation & Persisted Acknowledgement Suppression
+- **Chose:** Calculating slow-order alert eligibility dynamically on the server from `orders.created_at` (`EXTRACT(EPOCH FROM (NOW() - o.created_at)) / 60.0 > thresholdMinutes`) for open orders (`placed`, `accepted`, `preparing`), coupled with a relational `order_alert_acknowledgements` table tracking timestamped acknowledgements and evaluating re-alert triggers (`(NOW() - latest_ack_at) > reAlertMinutes`).
+- **Rejected:** Creating persistent mutable "alert" state records in the database or performing elapsed timer calculations strictly in client-side React code.
+- **Why:** Goal 10 mandates: *"An order that has been open for more than a set number of minutes without reaching Ready appears in an alerts area, with a count badge visible in the navigation. A waiter or manager can acknowledge the alert for that order, clearing it from the list. If the order is still not Ready a further set number of minutes later, the alert returns."* Dynamic server computation avoids brittle state synchronization issues (such as stale alert records remaining after an order is transitioned to `ready` or `served`). Persisting acknowledgement timestamps in an append-only relational ledger allows precise time-window suppression and clean re-alert triggering without mutative state flags.
+
 
 
 

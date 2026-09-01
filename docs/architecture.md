@@ -161,7 +161,31 @@ The application is structured into decoupled frontend, backend, and data tiers:
    - Executes `SELECT * FROM order_audit_events WHERE order_id = $1 ORDER BY created_at ASC` backed by compound index `idx_order_audit_events_order_created(order_id, created_at ASC)`.
 5. **Response**: Returns HTTP 200 with `{ status: 'success', data: { timeline: OrderAuditEvent[] } }`.
 
+### I. Slow-Order Alert Query & Acknowledgement (`GET /api/orders/alerts` & `POST /api/orders/:id/alerts/acknowledge`)
+1. **Client Request**:
+   - `AlertsView` or navigation bar polls `GET /api/orders/alerts` with JWT `Authorization: Bearer <token>`.
+   - When a staff member clicks "Acknowledge Alert", the client issues `POST /api/orders/:id/alerts/acknowledge` with optional resolution notes.
+2. **Authentication & Authorization**:
+   - `requireStaff` ensures valid staff credentials.
+   - `orderService.getSlowOrderAlerts` scopes queries:
+     - Managers view all slow orders across the restaurant.
+     - Waiters view slow orders strictly for tables they own or collaborate on.
+   - `acknowledgeAlert` enforces `canAccessOrder(user, order)` — unassigned waiters receive `403 Forbidden`.
+3. **Dynamic Elapsed Time Calculation & Alert Suppression**:
+   - Queries `orders` with `status IN ('placed', 'accepted', 'preparing')` and `is_archived = FALSE`.
+   - Computes elapsed open time: `EXTRACT(EPOCH FROM (NOW() - o.created_at)) / 60.0 > thresholdMinutes`.
+   - Checks latest acknowledgement from `order_alert_acknowledgements`:
+     - If acknowledged within `reAlertMinutes`, alert is suppressed (cleared).
+     - If elapsed time since latest acknowledgement exceeds `reAlertMinutes`, the alert returns with `isReAlert = true`.
+4. **Acknowledgement Recording & Audit Trail**:
+   - `acknowledgeSlowOrderAlert` inserts a record into `order_alert_acknowledgements` with `user_id`, `order_id`, `acknowledged_at`, and `notes`.
+   - Records an immutable audit event note on the order timeline (`note_added`).
+5. **Response**:
+   - `GET /api/orders/alerts` returns HTTP 200 `{ status: 'success', data: { alerts: SlowOrderAlert[], count: number } }`.
+   - `POST /api/orders/:id/alerts/acknowledge` returns HTTP 200 with `{ status: 'success', data: { acknowledgement: OrderAlertAcknowledgement } }`.
+
 ---
 
-## 4. What We Decided *Not* to Build in Phase 10
-- **No Slow-Order Alerts Yet**: Background threshold alerting and alert acknowledgement are scheduled for Phase 11 / Goal 10.
+## 4. What We Decided *Not* to Build in Phase 11
+- **No Background Push Notification Daemon / WebSockets**: Dynamically computed REST queries with configurable polling interval satisfy all Goal 10 requirements with complete predictability, zero connection leaks, and zero websocket server maintenance overhead.
+

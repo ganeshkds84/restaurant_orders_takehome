@@ -146,6 +146,21 @@ Persists an immutable, append-only chronological audit log of all order lifecycl
 - `idx_order_audit_events_actor`: B-Tree index on `actor_id` for staff action auditing.
 - `idx_order_audit_events_event_type`: B-Tree index on `event_type` for event-specific reporting.
 
+### 8. `order_alert_acknowledgements`
+Persists acknowledgements of slow-order alerts by staff members, recording actor identity and timestamp for alert clearing and re-alert calculations.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | UUID | PRIMARY KEY DEFAULT `gen_random_uuid()` | Unique acknowledgement UUID identifier |
+| `order_id` | UUID | NOT NULL, REFERENCES `orders(id)` ON DELETE CASCADE | Target slow order foreign key |
+| `user_id` | UUID | NOT NULL, REFERENCES `users(id)` ON DELETE RESTRICT | Staff member who acknowledged the alert |
+| `acknowledged_at` | TIMESTAMPTZ | NOT NULL DEFAULT NOW() | Timestamp when alert was acknowledged |
+| `notes` | TEXT | NULL | Optional resolution note (e.g. "Checked with kitchen") |
+
+**Constraints & Indexes**:
+- `idx_order_alert_acks_order_time`: Compound B-Tree index on `(order_id, acknowledged_at DESC)` for ultra-fast latest-acknowledgement lookup in alert suppression queries.
+- `idx_order_alert_acks_user`: B-Tree index on `user_id` for staff action auditing.
+
 ---
 
 ## Relationships
@@ -154,6 +169,7 @@ Persists an immutable, append-only chronological audit log of all order lifecycl
 - `menu_items` $\xrightarrow{1:N}$ `order_lines`: One menu item is referenced by order lines across historical tickets (`order_lines.menu_item_id` $\to$ `menu_items.id`, restricted on delete).
 - `orders` $\xleftrightarrow{M:N}$ `users` (via `order_collaborators`): One order can have multiple collaborating waiters; one waiter can collaborate on multiple orders.
 - `orders` $\xrightarrow{1:N}$ `order_audit_events`: One order has an append-only timeline of audit events (`order_audit_events.order_id` $\to$ `orders.id`, cascading on delete).
+- `orders` $\xrightarrow{1:N}$ `order_alert_acknowledgements`: One order can have multiple historical alert acknowledgements across re-alert cycles (`order_alert_acknowledgements.order_id` $\to$ `orders.id`, cascading on delete).
 
 ---
 

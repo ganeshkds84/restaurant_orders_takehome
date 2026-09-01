@@ -50,6 +50,42 @@ router.get(
   }
 );
 
+/**
+ * GET /api/orders/alerts
+ * Retrieve active slow-order alerts and count scoped to caller permissions
+ */
+router.get(
+  '/alerts',
+  requireStaff,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      const thresholdMinutes = req.query.thresholdMinutes
+        ? Math.max(1, parseInt(String(req.query.thresholdMinutes), 10) || 15)
+        : undefined;
+
+      const reAlertMinutes = req.query.reAlertMinutes
+        ? Math.max(1, parseInt(String(req.query.reAlertMinutes), 10) || 15)
+        : undefined;
+
+      const result = await orderService.getSlowOrderAlerts(req.user, {
+        thresholdMinutes,
+        reAlertMinutes,
+      });
+
+      res.status(200).json({
+        status: 'success',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 
 /**
  * POST /api/orders
@@ -519,6 +555,67 @@ router.get(
         data: {
           timeline,
           events: timeline,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/orders/:id/alerts/acknowledge
+ * Acknowledge a slow-order alert, clearing it from the active alerts list
+ */
+router.post(
+  '/:id/alerts/acknowledge',
+  requireStaff,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      const notes = req.body?.notes ? String(req.body.notes).trim() : undefined;
+      const acknowledgement = await orderService.acknowledgeAlert(req.user, orderId, notes);
+
+      res.status(200).json({
+        status: 'success',
+        message: 'Slow order alert acknowledged successfully',
+        data: {
+          acknowledgement,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/orders/:id/acknowledge-alert (alias)
+ */
+router.post(
+  '/:id/acknowledge-alert',
+  requireStaff,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      const notes = req.body?.notes ? String(req.body.notes).trim() : undefined;
+      const acknowledgement = await orderService.acknowledgeAlert(req.user, orderId, notes);
+
+      res.status(200).json({
+        status: 'success',
+        message: 'Slow order alert acknowledged successfully',
+        data: {
+          acknowledgement,
         },
       });
     } catch (error) {

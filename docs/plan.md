@@ -69,38 +69,51 @@
   - Built frontend `DashboardView.tsx` with responsive stat cards, status distribution bars, 14-day history chart, and waitstaff leaderboard.
   - Integrated "Dashboard" tab in `App.tsx` navigation.
   - Added 10 new backend automated test cases (`tests/dashboard.test.ts`) and 6 new frontend test cases (`tests/Dashboard.test.tsx`), bringing total test suite to 168 passing automated tests (125 backend, 43 frontend).
-- **Future Sessions (Planned)**
-  - Session 10: Immutable Audit & History Timeline (Goal 9)
-  - Session 11: Slow-Order Alert System (Goal 10)
+- **Session 10: Immutable Audit & History Timeline (Phase 10 - Goal 9)**
+  - Implemented database schema migration `005_create_order_audit_events.sql` with table `order_audit_events` and compound index `(order_id, created_at ASC)`.
+  - Added transactional audit event logging into all order mutations with complete immutability (zero mutation endpoints).
+  - Mounted scoped REST API `GET /api/orders/:id/timeline`.
+  - Built interactive expandable Order History Timeline in `OrderList.tsx`.
+  - Added 12 backend tests and 4 frontend tests (184 total tests).
+- **Session 11 (Current — Phase 11 Completed): Slow-Order Alerts (Goal 10)**
+  - Implemented database migration `006_create_order_alert_acknowledgements.sql` with table `order_alert_acknowledgements` and compound index on `(order_id, acknowledged_at DESC)`.
+  - Implemented dynamic server-side elapsed time computation (`EXTRACT(EPOCH FROM (NOW() - o.created_at)) / 60.0 > thresholdMinutes`) for open orders (`placed`, `accepted`, `preparing`), excluding `ready`, `served`, `cancelled`, and archived tickets.
+  - Implemented alert suppression and re-alert logic: an alert is cleared upon acknowledgement; if the order remains open past `reAlertMinutes`, it reappears with `isReAlert = true`.
+  - Implemented REST endpoints `GET /api/orders/alerts` and `POST /api/orders/:id/alerts/acknowledge` scoped by centralized RBAC (`order.auth.ts`).
+  - Built dedicated `AlertsView.tsx` component with real-time timer displays, overdue indicators, re-alert banners, and acknowledgement modals.
+  - Integrated navigation bar "Alerts" tab with dynamic active alert count badge.
+  - Added 11 new backend automated tests (`tests/alerts.test.ts`) and 5 new frontend automated tests (`tests/Alerts.test.tsx`), bringing total test suite to 200 passing tests (148 backend, 52 frontend).
 
 ---
 
-## 2. Order of Implementation and Rationale (Phase 10 - Goal 9)
-1. **Discovery & Specification Inspection**: Inspected `README.md` lines 72-75 and confirmed Goal 9 (*History you cannot rewrite*) as the exact next unimplemented goal.
-2. **Database Migration**: Created `005_create_order_audit_events.sql` with table `order_audit_events` and compound index on `(order_id, created_at ASC)`.
-3. **Data Types & Repository**: Created `server/src/types/timeline.ts` and updated `OrderRepository` to record audit entries atomically inside existing order mutations (`createOrderWithLines`, `updateOrderStatus`, `cancelOrder`, `addOrderLine`, `voidOrderLine`, `addCollaborator`, `removeCollaborator`).
-4. **Service & Authorization**: Added `getOrderTimeline(user, orderId)` in `OrderService` with scoped access rules (`canAccessOrder`).
-5. **REST API Routes**: Added `GET /api/orders/:id/timeline` and `GET /api/orders/:id/history` with staff authentication.
-6. **Backend Test Suite**: Implemented 12 automated test cases in `server/tests/timeline.test.ts` covering the entire lifecycle, immutability, access scoping, and transaction rejection atomicity.
-7. **Frontend Service & Types**: Created `client/src/types/timeline.ts` and `client/src/services/timeline.service.ts`.
-8. **Frontend UI Integration**: Updated `client/src/components/OrderList.tsx` with collapsible "Order History Timeline" panel, color-coded event badges, actor info, status progression pills, line items, and void reasons.
-9. **Frontend Automated Tests**: Added 4 test cases in `client/tests/Timeline.test.tsx` validating timeline rendering, chronological ordering, line void details, and error recovery.
+## 2. Order of Implementation and Rationale (Phase 11 - Goal 10)
+1. **Discovery & Specification Inspection**: Inspected `README.md` lines 76-80 and confirmed Goal 10 (*Slow-order alerts*) requirements, threshold logic, re-alert window, and acknowledgement rules.
+2. **Database Migration**: Created `006_create_order_alert_acknowledgements.sql` with table `order_alert_acknowledgements` and compound index `idx_order_alert_acks_order_time(order_id, acknowledged_at DESC)`.
+3. **Data Types & Repository**: Created `server/src/types/alert.ts` and added `getSlowOrderAlerts` (with SQL CTE `latest_acks` and dual-mode in-memory store) and `acknowledgeSlowOrderAlert` in `OrderRepository`.
+4. **Service & Authorization**: Added `getSlowOrderAlerts` and `acknowledgeAlert` in `OrderService` with scoped access rules (`canAccessOrder`).
+5. **REST API Routes**: Mounted `GET /api/orders/alerts` and `POST /api/orders/:id/alerts/acknowledge` with staff authentication.
+6. **Backend Test Suite**: Implemented 11 automated test cases in `server/tests/alerts.test.ts` covering threshold calculation, status exclusions, acknowledgement clearing, re-alert reactivation, waiter scoping, and unassigned waiter 403 blocks.
+7. **Frontend Service & Types**: Created `client/src/types/alert.ts` and `client/src/services/alert.service.ts`.
+8. **Frontend UI Integration**: Created `client/src/components/AlertsView.tsx` and updated `client/src/App.tsx` with top navigation "Alerts" tab and live active count badge.
+9. **Frontend Automated Tests**: Added 5 test cases in `client/tests/Alerts.test.tsx` validating alert rendering, overdue calculation, re-alert badge, acknowledgement clearing, and error resilience.
 
 ---
 
 ## 3. Estimated vs. Actual Time
 - **Discovery & Specification Mapping**: Estimated 10m, took ~10m.
-- **Database Migration & Repository Mutations**: Estimated 25m, took ~20m.
+- **Database Migration & Repository Implementation**: Estimated 25m, took ~20m.
 - **Backend Service & Route Endpoints**: Estimated 15m, took ~15m.
-- **Backend Test Suite (12 test cases)**: Estimated 20m, took ~15m.
-- **Frontend Timeline Service & UI**: Estimated 25m, took ~25m.
-- **Frontend Test Suite (4 test cases)**: Estimated 15m, took ~15m.
+- **Backend Test Suite (11 test cases)**: Estimated 20m, took ~15m.
+- **Frontend AlertsView & Navigation Badge**: Estimated 25m, took ~20m.
+- **Frontend Test Suite (5 test cases)**: Estimated 15m, took ~15m.
 - **Documentation & Verification**: Estimated 15m, took ~10m.
 
 ---
 
 ## 4. What Was Cut or Deferred
-- **Slow-order alerts** are scheduled for Phase 11 / Goal 10.
+- **All 10 core assignment goals are now fully implemented and verified!**
+- Optional stretch ideas (kitchen display screen, handheld devices, split checks) are deferred as all 10 cutoff requirements are completely satisfied.
+
 
 
 

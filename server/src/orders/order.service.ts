@@ -13,6 +13,7 @@ import {
   AddOrderLineInput,
 } from '../types/order.js';
 import { OrderAuditEvent } from '../types/timeline.js';
+import { SlowOrderAlertsResponse, OrderAlertAcknowledgement } from '../types/alert.js';
 import {
   validateStatusTransition,
   canVoidOrderLines,
@@ -543,6 +544,62 @@ export class OrderService {
   async getEligibleWaiters(user: UserResponse): Promise<UserResponse[]> {
     const dbUsers = await this.userRepo.findAllByRole('waiter');
     return dbUsers.map(mapToUserResponse);
+  }
+
+  /**
+   * Get active slow-order alerts and count scoped to caller permissions.
+   * Managers view restaurant-wide slow orders.
+   * Waiters view slow orders strictly where they are primary waiter or collaborator.
+   */
+  async getSlowOrderAlerts(
+    user: UserResponse,
+    query?: { thresholdMinutes?: number; reAlertMinutes?: number }
+  ): Promise<SlowOrderAlertsResponse> {
+    const waiterId = user.role === 'waiter' ? user.id : undefined;
+    return this.orderRepo.getSlowOrderAlerts({
+      waiterId,
+      thresholdMinutes: query?.thresholdMinutes,
+      reAlertMinutes: query?.reAlertMinutes,
+    });
+  }
+
+  /**
+   * Acknowledge a slow-order alert, clearing it from the active alerts list.
+   * If the order remains not Ready after reAlertMinutes, it will return.
+   */
+  async acknowledgeAlert(
+    user: UserResponse,
+    orderId: string,
+    notes?: string
+  ): Promise<OrderAlertAcknowledgement> {
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) {
+      throw AppError.notFound(`Order not found: ${orderId}`);
+    }
+
+    if (!canAccessOrder(user, order)) {
+      throw AppError.forbidden('Forbidden: you do not have permission to acknowledge alerts for this order');
+    }
+
+    logger.info('Acknowledging slow order alert', {
+      orderId,
+      acknowledgedBy: user.id,
+      acknowledgedByRole: user.role,
+    });
+
+    const ack = await this.orderRepo.acknowledgeSlowOrderAlert(orderId, user.id, notes);
+
+    // Also record audit event note for immutable history
+    await this.orderRepo.recordAuditEvent({
+      orderId,
+      actorId: user.id,
+      actorName: user.name,
+      actorRole: user.role,
+      eventType: 'note_added',
+      notes: notes ? `Slow-order alert acknowledged: "${notes}"` : 'Slow-order alert acknowledged',
+    });
+
+    return ack;
   }
 }
 
