@@ -121,12 +121,39 @@ Persists many-to-many collaborator assignments linking orders to collaborating w
 
 ---
 
+### 7. `order_audit_events`
+Persists an immutable, append-only chronological audit log of all order lifecycle events, line additions, line voids, and collaborator changes.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | UUID | PRIMARY KEY DEFAULT `gen_random_uuid()` | Unique audit event UUID identifier |
+| `order_id` | UUID | NOT NULL, REFERENCES `orders(id)` ON DELETE CASCADE | Target order foreign key |
+| `actor_id` | UUID | NULL, REFERENCES `users(id)` ON DELETE SET NULL | User ID of staff member who triggered the action |
+| `actor_name` | VARCHAR(255) | NOT NULL | Immutable snapshot of actor's display name |
+| `actor_role` | VARCHAR(32) | NOT NULL | Immutable snapshot of actor's role (`manager`, `waiter`) |
+| `event_type` | VARCHAR(64) | NOT NULL, CHECK (`event_type IN ('order_created', 'status_changed', 'line_added', 'line_voided', 'collaborator_added', 'collaborator_removed', 'note_added')`) | Audit event type classifier |
+| `old_status` | VARCHAR(32) | NULL | Previous lifecycle status on state change |
+| `new_status` | VARCHAR(32) | NULL | New lifecycle status on state change |
+| `item_name` | VARCHAR(255) | NULL | Snapshot of item name for line added/voided events |
+| `quantity` | INTEGER | NULL | Quantity for line added/voided events |
+| `unit_price` | NUMERIC(10, 2) | NULL | Unit price snapshot for line added/voided events |
+| `reason` | TEXT | NULL | Transition reason or mandatory void reason |
+| `notes` | TEXT | NULL | Additional instructions or collaborator details |
+| `created_at` | TIMESTAMPTZ | NOT NULL DEFAULT NOW() | Timestamp when audit event was recorded |
+
+**Constraints & Indexes**:
+- `idx_order_audit_events_order_created`: Compound B-Tree index on `(order_id, created_at ASC)` for ultra-fast chronological timeline rendering.
+- `idx_order_audit_events_actor`: B-Tree index on `actor_id` for staff action auditing.
+- `idx_order_audit_events_event_type`: B-Tree index on `event_type` for event-specific reporting.
+
+---
+
 ## Relationships
 - `users` $\xrightarrow{1:N}$ `orders`: One primary waiter creates many orders (`orders.primary_waiter_id` $\to$ `users.id`).
 - `orders` $\xrightarrow{1:N}$ `order_lines`: One order has one or more order lines (`order_lines.order_id` $\to$ `orders.id`, cascading on delete).
 - `menu_items` $\xrightarrow{1:N}$ `order_lines`: One menu item is referenced by order lines across historical tickets (`order_lines.menu_item_id` $\to$ `menu_items.id`, restricted on delete).
 - `orders` $\xleftrightarrow{M:N}$ `users` (via `order_collaborators`): One order can have multiple collaborating waiters; one waiter can collaborate on multiple orders.
-
+- `orders` $\xrightarrow{1:N}$ `order_audit_events`: One order has an append-only timeline of audit events (`order_audit_events.order_id` $\to$ `orders.id`, cascading on delete).
 
 ---
 
@@ -136,13 +163,15 @@ Persists many-to-many collaborator assignments linking orders to collaborating w
 1. **Primary Key & Foreign Key Integrity**: `orders.primary_waiter_id` and `order_lines.order_id` / `menu_item_id` guarantee relational integrity and prevent orphaned line items via `CASCADE` or `RESTRICT`.
 2. **Positive Quantities & Non-Negative Prices**: `CHECK (quantity > 0)` and `CHECK (unit_price >= 0)` guarantee zero/negative quantities and illegal prices are rejected at the database level.
 3. **Status Domain Invariants**: `CHECK (status IN ('placed', 'accepted', 'preparing', 'ready', 'served', 'cancelled'))` enforces valid lifecycle statuses.
-4. **Monetary Precision**: `NUMERIC(10, 2)` prevents floating point drift across line totals and order sums.
+4. **Audit Event Type Invariants**: `CHECK (event_type IN ('order_created', 'status_changed', 'line_added', 'line_voided', 'collaborator_added', 'collaborator_removed', 'note_added'))` ensures valid audit types.
+5. **Monetary Precision**: `NUMERIC(10, 2)` prevents floating point drift across line totals and order sums.
 
 ### Enforced by Application Layer:
 1. **Historical Price Snapshotting**: On order line creation, server queries active menu item price, locks in the snapshot onto `order_lines.unit_price`, and calculates authoritative total.
 2. **Item Availability Check**: Rejecting orders containing 86ed or archived menu items with descriptive 400 errors.
-3. **Atomic Transaction Boundary**: Wrapping order creation, line additions, and line voiding in transactional boundaries with automatic rollback on failure.
-4. **Server-Derived Ownership**: Strictly assigning `orders.primary_waiter_id` from authenticated JWT token identity, ignoring any client-supplied spoofed waiter ID.
+3. **Atomic Transaction Boundary**: Wrapping order creation, line additions, line voiding, and audit event insertion in transactional boundaries with automatic rollback on failure.
+4. **Append-Only Immutability**: No `UPDATE` or `DELETE` API routes exist for `order_audit_events`, guaranteeing historical timeline immutability even for managers.
+5. **Server-Derived Actor Identity**: Strictly snapshotting actor identity (`actor_id`, `actor_name`, `actor_role`) from authenticated JWT sessions (`req.user`).
 5. **RBAC Scoping**: Scoping waiter order queries and lifecycle transitions strictly to their own orders while granting managers visibility across all restaurant orders.
 6. **State Machine Transition Rules**: Strictly validating sequential progression (*Placed $\to$ Accepted $\to$ Preparing $\to$ Ready $\to$ Served*), blocking state skips and backward transitions.
 7. **Cancellation Boundaries**: Restricting cancellation strictly to `placed` and `accepted` states.

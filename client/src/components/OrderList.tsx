@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Order, OrderStatus, OrderCollaborator, OrderSortField, OrderSortOrder } from '../types/order';
+import { OrderAuditEvent } from '../types/timeline';
 import {
   fetchOrdersApi,
   fetchOrderByIdApi,
@@ -12,6 +13,7 @@ import {
   removeCollaboratorApi,
   exportOrdersCsvApi,
 } from '../services/order.service';
+import { fetchOrderTimeline } from '../services/timeline.service';
 import {
   Receipt,
   RotateCcw,
@@ -36,6 +38,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  History,
 } from 'lucide-react';
 
 
@@ -50,6 +53,12 @@ export const OrderList: React.FC<OrderListProps> = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  // Timeline State (Phase 10 - Goal 9)
+  const [orderTimelines, setOrderTimelines] = useState<Record<string, OrderAuditEvent[]>>({});
+  const [loadingTimelines, setLoadingTimelines] = useState<Record<string, boolean>>({});
+  const [timelineErrors, setTimelineErrors] = useState<Record<string, string | null>>({});
+  const [expandedTimelineOrders, setExpandedTimelineOrders] = useState<Record<string, boolean>>({});
 
   // Search, Filter, Sort & Pagination State
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -89,6 +98,33 @@ export const OrderList: React.FC<OrderListProps> = () => {
   const [collabError, setCollabError] = useState<string | null>(null);
   const [isLoadingWaiters, setIsLoadingWaiters] = useState<boolean>(false);
   const [isSubmittingCollab, setIsSubmittingCollab] = useState<boolean>(false);
+
+  const loadTimelineForOrder = async (orderId: string) => {
+    if (!token) return;
+    try {
+      setLoadingTimelines((prev) => ({ ...prev, [orderId]: true }));
+      setTimelineErrors((prev) => ({ ...prev, [orderId]: null }));
+      const timeline = await fetchOrderTimeline(token, orderId);
+      setOrderTimelines((prev) => ({ ...prev, [orderId]: timeline }));
+    } catch (err) {
+      setTimelineErrors((prev) => ({
+        ...prev,
+        [orderId]: err instanceof Error ? err.message : 'Failed to load order history timeline.',
+      }));
+    } finally {
+      setLoadingTimelines((prev) => ({ ...prev, [orderId]: false }));
+    }
+  };
+
+  const toggleTimeline = (orderId: string) => {
+    setExpandedTimelineOrders((prev) => {
+      const nextState = !prev[orderId];
+      if (nextState && !orderTimelines[orderId]) {
+        loadTimelineForOrder(orderId);
+      }
+      return { ...prev, [orderId]: nextState };
+    });
+  };
 
   const loadOrders = async () => {
     if (!token) return;
@@ -908,6 +944,7 @@ export const OrderList: React.FC<OrderListProps> = () => {
 
                     <button
                       type="button"
+                      data-testid={`expand-order-${order.id}`}
                       onClick={() => toggleExpand(order.id)}
                       aria-label="Toggle order details"
                       style={{
@@ -1298,6 +1335,230 @@ export const OrderList: React.FC<OrderListProps> = () => {
                               )}
                             </div>
                           ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Order Audit History Timeline (Phase 10 - Goal 9) */}
+                    <div
+                      className="glass-card"
+                      data-testid={`order-timeline-section-${order.id}`}
+                      style={{
+                        padding: '1.25rem',
+                        borderRadius: 'var(--radius-md)',
+                        background: 'rgba(15, 23, 42, 0.5)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1rem',
+                      }}
+                    >
+                      <div
+                        data-testid={`btn-toggle-timeline-${order.id}`}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => toggleTimeline(order.id)}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <History size={18} style={{ color: 'var(--accent-primary)' }} />
+                          <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--text-primary)' }}>
+                            Order History Timeline
+                          </span>
+                          {orderTimelines[order.id] && (
+                            <span
+                              className="badge"
+                              data-testid={`timeline-count-badge-${order.id}`}
+                              style={{ background: 'rgba(99, 102, 241, 0.15)', color: 'var(--accent-primary)', fontSize: '0.75rem' }}
+                            >
+                              {orderTimelines[order.id].length} {orderTimelines[order.id].length === 1 ? 'event' : 'events'}
+                            </span>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            data-testid={`btn-refresh-timeline-${order.id}`}
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              loadTimelineForOrder(order.id);
+                            }}
+                          >
+                            <RotateCcw size={12} className={loadingTimelines[order.id] ? 'animate-spin' : ''} />
+                            Refresh
+                          </button>
+                          {expandedTimelineOrders[order.id] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </div>
+                      </div>
+
+                      {expandedTimelineOrders[order.id] && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                          {loadingTimelines[order.id] && !orderTimelines[order.id] && (
+                            <div data-testid={`timeline-loading-${order.id}`} style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                              Loading order history...
+                            </div>
+                          )}
+
+                          {timelineErrors[order.id] && (
+                            <div data-testid={`timeline-error-${order.id}`} style={{ padding: '0.75rem', borderRadius: 'var(--radius-sm)', background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', fontSize: '0.8125rem' }}>
+                              {timelineErrors[order.id]}
+                            </div>
+                          )}
+
+                          {orderTimelines[order.id] && orderTimelines[order.id].length === 0 && (
+                            <div data-testid={`timeline-empty-${order.id}`} style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                              No timeline events recorded for this order yet.
+                            </div>
+                          )}
+
+                          {orderTimelines[order.id] && orderTimelines[order.id].length > 0 && (
+                            <div
+                              data-testid={`timeline-events-list-${order.id}`}
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.75rem',
+                                position: 'relative',
+                                paddingLeft: '1.25rem',
+                                borderLeft: '2px solid rgba(255, 255, 255, 0.1)',
+                                marginLeft: '0.5rem',
+                              }}
+                            >
+                              {orderTimelines[order.id].map((event, idx) => (
+                                <div
+                                  key={event.id || idx}
+                                  data-testid={`timeline-event-${event.eventType}`}
+                                  style={{
+                                    position: 'relative',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.35rem',
+                                    padding: '0.65rem 0.85rem',
+                                    background: 'rgba(30, 41, 59, 0.6)',
+                                    borderRadius: 'var(--radius-sm)',
+                                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                                  }}
+                                >
+                                  {/* Event node dot */}
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      left: '-1.65rem',
+                                      top: '0.85rem',
+                                      width: '10px',
+                                      height: '10px',
+                                      borderRadius: '50%',
+                                      background:
+                                        event.eventType === 'order_created'
+                                          ? '#3b82f6'
+                                          : event.eventType === 'line_voided'
+                                          ? '#ef4444'
+                                          : event.eventType === 'line_added'
+                                          ? '#10b981'
+                                          : event.eventType === 'collaborator_added'
+                                          ? '#6366f1'
+                                          : event.eventType === 'status_changed' && event.newStatus === 'cancelled'
+                                          ? '#ef4444'
+                                          : '#f59e0b',
+                                      boxShadow: '0 0 6px rgba(0, 0, 0, 0.5)',
+                                    }}
+                                  />
+
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                      <span
+                                        className="badge"
+                                        style={{
+                                          fontSize: '0.6875rem',
+                                          fontWeight: 700,
+                                          textTransform: 'uppercase',
+                                          letterSpacing: '0.05em',
+                                          background: 'rgba(255, 255, 255, 0.08)',
+                                          color: 'var(--text-primary)',
+                                        }}
+                                      >
+                                        {event.eventType.replace('_', ' ')}
+                                      </span>
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                        <User size={12} />
+                                        <strong style={{ color: 'var(--text-primary)' }}>{event.actorName}</strong> ({event.actorRole})
+                                      </span>
+                                    </div>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                      {new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })},{' '}
+                                      {new Date(event.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                                    </span>
+                                  </div>
+
+                                  {/* Event specific details */}
+                                  {event.eventType === 'order_created' && (
+                                    <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                                      {event.notes || 'Order placed'}
+                                    </div>
+                                  )}
+
+                                  {event.eventType === 'status_changed' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.8125rem' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <span style={{ color: 'var(--text-muted)' }}>Status changed:</span>
+                                        <span className="badge" style={{ fontSize: '0.6875rem', background: 'rgba(255, 255, 255, 0.05)' }}>
+                                          {event.oldStatus?.toUpperCase()}
+                                        </span>
+                                        <span style={{ color: 'var(--text-muted)' }}>&rarr;</span>
+                                        <span className="badge" style={{ fontSize: '0.6875rem', background: 'rgba(99, 102, 241, 0.2)', color: 'var(--accent-primary)' }}>
+                                          {event.newStatus?.toUpperCase()}
+                                        </span>
+                                      </div>
+                                      {event.reason && (
+                                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic' }}>
+                                          Reason: "{event.reason}"
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {event.eventType === 'line_added' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.8125rem' }}>
+                                      <div style={{ color: 'var(--text-primary)' }}>
+                                        Added <strong>{event.quantity}x {event.itemName}</strong>
+                                        {event.unitPrice !== null && event.unitPrice !== undefined && ` ($${Number(event.unitPrice).toFixed(2)} each)`}
+                                      </div>
+                                      {event.notes && (
+                                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic' }}>
+                                          Instructions: "{event.notes}"
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {event.eventType === 'line_voided' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.8125rem' }}>
+                                      <div style={{ color: '#fca5a5' }}>
+                                        Voided <strong>{event.quantity}x {event.itemName}</strong>
+                                      </div>
+                                      {event.reason && (
+                                        <div style={{ color: '#f87171', fontSize: '0.75rem', fontStyle: 'italic' }}>
+                                          Void Reason: "{event.reason}"
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {(event.eventType === 'collaborator_added' || event.eventType === 'collaborator_removed') && (
+                                    <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                                      {event.notes}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

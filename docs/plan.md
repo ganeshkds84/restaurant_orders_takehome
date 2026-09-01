@@ -75,28 +75,32 @@
 
 ---
 
-## 2. Order of Implementation and Rationale
-1. **Discovery & Specification Inspection**: Inspected `README.md` and confirmed Goal 8 (A Dashboard) as the exact next unimplemented goal after Goal 7.
-2. **Server Types & Repositories**: Defined `HeadlineMetrics`, `StatusBreakdownItem`, `WaiterBreakdownItem`, `DailyServedPoint`, and `DashboardStatsResponse`. Implemented `DashboardRepository` with PostgreSQL queries and in-memory test fallback.
-3. **Dashboard Service & Routes**: Implemented date validation in `DashboardService` and mounted `GET /api/dashboard/stats` and `GET /api/dashboard` under `/api/dashboard`.
-4. **Backend Automated Tests**: Added 10 tests in `tests/dashboard.test.ts` validating headline calculations, status breakdown, waiter performance, 14-day chart series, date parameter validation, and RBAC authentication.
-5. **Frontend Services & UI**: Built `DashboardView.tsx` with stat cards, progress bars, responsive 14-day bar chart, and waitstaff table, and wired tab in `App.tsx`.
-6. **Frontend Integration Tests**: Validated UI card rendering, status pipeline breakdown, 14-day chart bars, waiter table rows, refresh trigger, and error handling in `client/tests/Dashboard.test.tsx`.
+## 2. Order of Implementation and Rationale (Phase 10 - Goal 9)
+1. **Discovery & Specification Inspection**: Inspected `README.md` lines 72-75 and confirmed Goal 9 (*History you cannot rewrite*) as the exact next unimplemented goal.
+2. **Database Migration**: Created `005_create_order_audit_events.sql` with table `order_audit_events` and compound index on `(order_id, created_at ASC)`.
+3. **Data Types & Repository**: Created `server/src/types/timeline.ts` and updated `OrderRepository` to record audit entries atomically inside existing order mutations (`createOrderWithLines`, `updateOrderStatus`, `cancelOrder`, `addOrderLine`, `voidOrderLine`, `addCollaborator`, `removeCollaborator`).
+4. **Service & Authorization**: Added `getOrderTimeline(user, orderId)` in `OrderService` with scoped access rules (`canAccessOrder`).
+5. **REST API Routes**: Added `GET /api/orders/:id/timeline` and `GET /api/orders/:id/history` with staff authentication.
+6. **Backend Test Suite**: Implemented 12 automated test cases in `server/tests/timeline.test.ts` covering the entire lifecycle, immutability, access scoping, and transaction rejection atomicity.
+7. **Frontend Service & Types**: Created `client/src/types/timeline.ts` and `client/src/services/timeline.service.ts`.
+8. **Frontend UI Integration**: Updated `client/src/components/OrderList.tsx` with collapsible "Order History Timeline" panel, color-coded event badges, actor info, status progression pills, line items, and void reasons.
+9. **Frontend Automated Tests**: Added 4 test cases in `client/tests/Timeline.test.tsx` validating timeline rendering, chronological ordering, line void details, and error recovery.
 
 ---
 
 ## 3. Estimated vs. Actual Time
 - **Discovery & Specification Mapping**: Estimated 10m, took ~10m.
-- **Backend Analytics Aggregation & Routes**: Estimated 25m, took ~20m.
-- **Backend Test Suite (10 test cases)**: Estimated 20m, took ~15m.
-- **Frontend Dashboard View & Chart UI**: Estimated 30m, took ~25m.
-- **Frontend Test Suite (6 test cases)**: Estimated 20m, took ~15m.
+- **Database Migration & Repository Mutations**: Estimated 25m, took ~20m.
+- **Backend Service & Route Endpoints**: Estimated 15m, took ~15m.
+- **Backend Test Suite (12 test cases)**: Estimated 20m, took ~15m.
+- **Frontend Timeline Service & UI**: Estimated 25m, took ~25m.
+- **Frontend Test Suite (4 test cases)**: Estimated 15m, took ~15m.
 - **Documentation & Verification**: Estimated 15m, took ~10m.
 
 ---
 
 ## 4. What Was Cut or Deferred
-- **Immutable audit/history timeline** is scheduled for Goal 9.
-- **Slow-order alerts** are scheduled for Goal 10.
+- **Slow-order alerts** are scheduled for Phase 11 / Goal 10.
+
 
 

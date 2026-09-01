@@ -144,9 +144,24 @@ The application is structured into decoupled frontend, backend, and data tiers:
 
 ---
 
-## 4. What We Decided *Not* to Build in Phase 9
-- **No Immutable Audit/History Timeline Yet**: Audit event tracking and order timeline history are scheduled for Phase 10 / Goal 9.
-- **No Slow-Order Alerts Yet**: Background threshold alerts and alert acknowledgement are scheduled for Goal 10.
+### H. Order Audit History Timeline (`GET /api/orders/:id/timeline`)
+1. **Client**: User expands an order ticket in `OrderList` and toggles "Order History Timeline". Browser sends `GET /api/orders/:id/timeline` (or `GET /api/orders/:id/history`) with `Authorization: Bearer <token>`.
+2. **Authentication & Authorization**:
+   - `authenticate` verifies JWT token.
+   - `requireStaff` ensures caller is an authenticated staff member.
+   - `canAccessOrder(user, order)` in `order.auth.ts` verifies:
+     - Managers have restaurant-wide audit visibility across all tables.
+     - Waiters can view timelines strictly for orders where they are the primary waiter or an assigned collaborator.
+     - Unassigned waiters receive `403 Forbidden`.
+3. **Immutability & Transactional Logging Architecture**:
+   - **Zero Modification Endpoints**: The server does NOT expose any `PUT`, `PATCH`, or `DELETE` endpoints for timeline events. Audit entries are strictly append-only.
+   - **Coupled Transactional Writes**: All order mutations (`createOrderWithLines`, `updateOrderStatus`, `cancelOrder`, `addOrderLine`, `voidOrderLine`, `addCollaborator`, `removeCollaborator`) record corresponding audit rows within the same atomic transaction block. If an operation fails or is rejected, no phantom audit event is recorded.
+   - **Server-Authoritative Identity**: The caller's `actor_id`, `actor_name`, and `actor_role` are snapshotted from the authenticated JWT session (`req.user`), completely immune to client payload tampering.
+4. **Repository Execution (`OrderRepository.getOrderTimeline`)**:
+   - Executes `SELECT * FROM order_audit_events WHERE order_id = $1 ORDER BY created_at ASC` backed by compound index `idx_order_audit_events_order_created(order_id, created_at ASC)`.
+5. **Response**: Returns HTTP 200 with `{ status: 'success', data: { timeline: OrderAuditEvent[] } }`.
 
+---
 
-
+## 4. What We Decided *Not* to Build in Phase 10
+- **No Slow-Order Alerts Yet**: Background threshold alerting and alert acknowledgement are scheduled for Phase 11 / Goal 10.

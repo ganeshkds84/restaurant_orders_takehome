@@ -295,6 +295,40 @@ Implement ONLY Goal 8 from the ORIGINAL TAKE-HOME ASSIGNMENT SPECIFICATION:
 1. **Relative API Base URL in Frontend Service**: Switched from `new URL()` to string concatenation in `client/src/services/dashboard.service.ts` so relative base URLs (e.g. `/api`) work seamlessly in browser and Node/jsdom test environments.
 2. **Backward Compatibility for Tab Default**: Preserved default tab state while making the Dashboard tab prominently available in the navigation bar, ensuring existing Phase 3–8 frontend component tests continue to mount smoothly.
 
+---
 
+## Phase 10 — History You Cannot Rewrite / Order Audit Timeline (Goal 9)
 
+### Prompt
+```
+# Phase 10 — Order Audit History Timeline (Goal 9)
 
+We are continuing the Restaurant Orders take-home assignment.
+Implement ONLY Goal 9 from the ORIGINAL TAKE-HOME ASSIGNMENT SPECIFICATION:
+* 9. History you cannot rewrite. Every order has a timeline showing every status change with the old and new status and who made it, every line added or voided with its reason, and any notes left on it. Nothing in this timeline can be edited or deleted after the fact, including by managers.
+* Do NOT implement later phases such as slow-order alerts (Goal 10).
+* Do NOT rewrite working architecture from previous phases.
+* Preserve all existing functionality from Phases 1–9.
+* Do NOT commit or push anything.
+* Return a clear walkthrough of exactly what was implemented and the verification results.
+```
+
+### What you got
+- Database migration `005_create_order_audit_events.sql` creating table `order_audit_events` with indexed compound key `(order_id, created_at ASC)`.
+- Immutability guarantee: append-only table structure with no `UPDATE` or `DELETE` API endpoints (returns 404/405), ensuring timeline cannot be altered even by managers.
+- Server-authoritative actor identity: all timeline events snapshot `actor_id`, `actor_name`, and `actor_role` directly from authenticated JWT sessions (`req.user`).
+- Transactional recording across all order mutations:
+  - `order_created`: logs initial placement, table number, and line count.
+  - `status_changed`: logs transition from `old_status` to `new_status` with optional transition reason (or cancellation reason).
+  - `line_added`: snapshots menu item name, quantity, unit price, and special instructions.
+  - `line_voided`: snapshots item name, quantity, unit price, and mandatory void reason.
+  - `collaborator_added` / `collaborator_removed`: logs assignment and removal of waitstaff collaborators.
+- API endpoints `GET /api/orders/:id/timeline` and `GET /api/orders/:id/history` with scoped authorization (`canAccessOrder`).
+- Frontend interactive timeline view in `OrderList.tsx` rendering chronological events with color-coded badges, actor details, timestamps, status progression pills, line items, and void reasons.
+- 12 new backend automated test cases (`tests/timeline.test.ts`) and 4 new frontend test cases (`tests/Timeline.test.tsx`), bringing the total test suite to 184 passing automated tests (137 backend, 47 frontend).
+
+### What you corrected
+1. **JWT Helper Method Naming**: Updated token signing in `timeline.test.ts` to call `signToken` (canonical auth helper) instead of `generateAccessToken`.
+2. **Menu Item Category Invariant**: Added required `category` fields (`Mains`, `Beverages`, `Desserts`) to menu seed calls in `timeline.test.ts` to satisfy database and domain constraints.
+3. **Manager Name Seed Alignment**: Fixed manager display name assertion in `timeline.test.ts` to match the repository's seeded user name (`Alex Rivera (Manager)`).
+4. **Test Query Exactness**: Used `getAllByText` in frontend timeline tests when querying items displayed in both active lines and timeline event summaries.

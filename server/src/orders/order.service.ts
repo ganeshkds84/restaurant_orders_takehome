@@ -12,7 +12,7 @@ import {
   PaginatedOrdersResult,
   AddOrderLineInput,
 } from '../types/order.js';
-
+import { OrderAuditEvent } from '../types/timeline.js';
 import {
   validateStatusTransition,
   canVoidOrderLines,
@@ -104,7 +104,12 @@ export class OrderService {
         primaryWaiterId: user.id,
         totalPrice,
       },
-      linesToCreate
+      linesToCreate,
+      {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+      }
     );
 
     return createdOrder;
@@ -140,7 +145,6 @@ export class OrderService {
 
     return this.orderRepo.findPaginated(scopedFilters);
   }
-
 
   /**
    * Transition order lifecycle status using the authoritative state machine.
@@ -178,7 +182,13 @@ export class OrderService {
     const updatedOrder = await this.orderRepo.updateOrderStatus(
       orderId,
       order.status,
-      targetStatus
+      targetStatus,
+      {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+      },
+      reason
     );
 
     if (!updatedOrder) {
@@ -265,7 +275,12 @@ export class OrderService {
       orderId,
       lineId,
       voidReason.trim(),
-      newTotalPrice
+      newTotalPrice,
+      {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+      }
     );
 
     if (!updatedOrder) {
@@ -339,7 +354,12 @@ export class OrderService {
         unitPrice,
         specialInstructions: (input.specialInstructions || '').trim(),
       },
-      newTotalPrice
+      newTotalPrice,
+      {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+      }
     );
 
     if (!updatedOrder) {
@@ -400,11 +420,20 @@ export class OrderService {
       assignedByRole: user.role,
     });
 
-    const createdCollab = await this.orderRepo.addCollaborator(orderId, targetUserId, {
-      name: targetUser.name,
-      email: targetUser.email,
-      role: targetUser.role,
-    });
+    const createdCollab = await this.orderRepo.addCollaborator(
+      orderId,
+      targetUserId,
+      {
+        name: targetUser.name,
+        email: targetUser.email,
+        role: targetUser.role,
+      },
+      {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+      }
+    );
 
     return createdCollab;
   }
@@ -436,8 +465,8 @@ export class OrderService {
     }
 
     // Check collaborator exists on order
-    const isAssigned = order.collaborators.some((c) => c.userId === targetUserId);
-    if (!isAssigned) {
+    const collabMatch = order.collaborators.find((c) => c.userId === targetUserId);
+    if (!collabMatch) {
       throw AppError.notFound(
         `Collaborator assignment not found for user ${targetUserId} on order ${orderId}`
       );
@@ -450,7 +479,22 @@ export class OrderService {
       removedByRole: user.role,
     });
 
-    const removed = await this.orderRepo.removeCollaborator(orderId, targetUserId);
+    const removed = await this.orderRepo.removeCollaborator(
+      orderId,
+      targetUserId,
+      collabMatch.user
+        ? {
+            name: collabMatch.user.name,
+            email: collabMatch.user.email,
+            role: collabMatch.user.role,
+          }
+        : undefined,
+      {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+      }
+    );
     return removed;
   }
 
@@ -474,6 +518,26 @@ export class OrderService {
   }
 
   /**
+   * Get immutable audit history timeline for an order.
+   */
+  async getOrderTimeline(
+    user: UserResponse,
+    orderId: string
+  ): Promise<OrderAuditEvent[]> {
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) {
+      throw AppError.notFound(`Order not found: ${orderId}`);
+    }
+
+    // Authorization: Managers, primary waiter, and assigned collaborators can view timeline
+    if (!canAccessOrder(user, order)) {
+      throw AppError.forbidden('Forbidden: you do not have permission to view this order timeline');
+    }
+
+    return this.orderRepo.getOrderTimeline(orderId);
+  }
+
+  /**
    * List all eligible waiters in the restaurant for collaborator selection.
    */
   async getEligibleWaiters(user: UserResponse): Promise<UserResponse[]> {
@@ -481,6 +545,7 @@ export class OrderService {
     return dbUsers.map(mapToUserResponse);
   }
 }
+
 
 
 

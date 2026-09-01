@@ -129,5 +129,13 @@ Log of decisions that shaped this codebase — where a real alternative existed 
 - **Rejected:** Fetching all order records over the wire and computing business metrics in client-side React state.
 - **Why:** Authoritative metrics must never rely on client calculation or expose entire unpaginated order datasets to client inspection. Generating explicit 14-day calendar buckets on the server ensures zero-filled entries for days without sales, handles timezone boundaries deterministically, and provides instant O(1) response payloads for landing views.
 
+---
+
+## Decision 19: Append-Only Immutable Order Audit Events Schema & Transactional Integration
+- **Chose:** Designing a dedicated `order_audit_events` relational table populated transactionally alongside underlying order mutations (`createOrder`, `updateOrderStatus`, `cancelOrder`, `addOrderLine`, `voidOrderLine`, `addCollaborator`, `removeCollaborator`) snapshotting actor identity (`actor_id`, `actor_name`, `actor_role`), timestamps, old/new states, line details, and mandatory reasons.
+- **Rejected:** Mutating existing audit rows, storing audit entries as mutable JSON columns on `orders`, or exposing any `PUT`/`PATCH`/`DELETE` API endpoints for timeline records.
+- **Why:** Goal 9 states: *"Every order has a timeline showing every status change with the old and new status and who made it, every line added or voided with its reason, and any notes left on it. Nothing in this timeline can be edited or deleted after the fact, including by managers."* An append-only relational ledger with transactional write coupling guarantees tamper-proof audit trails, eliminates false-positive event creation on rejected requests, and provides $O(\log N)$ indexed chronological retrieval.
+
+
 
 

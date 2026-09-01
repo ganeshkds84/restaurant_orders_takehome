@@ -12,10 +12,42 @@ import {
   OrderSortField,
   PaginatedOrdersResult,
 } from '../types/order.js';
+import {
+  DbOrderAuditEvent,
+  OrderAuditEvent,
+  RecordAuditEventInput,
+} from '../types/timeline.js';
 import { logger } from '../logging/logger.js';
 import crypto from 'crypto';
 
+export function mapToOrderAuditEvent(dbEvent: DbOrderAuditEvent): OrderAuditEvent {
+  const unitPrice =
+    dbEvent.unit_price !== null && dbEvent.unit_price !== undefined
+      ? typeof dbEvent.unit_price === 'number'
+        ? dbEvent.unit_price
+        : parseFloat(String(dbEvent.unit_price))
+      : null;
 
+  return {
+    id: dbEvent.id,
+    orderId: dbEvent.order_id,
+    actorId: dbEvent.actor_id,
+    actorName: dbEvent.actor_name,
+    actorRole: dbEvent.actor_role,
+    eventType: dbEvent.event_type,
+    oldStatus: dbEvent.old_status,
+    newStatus: dbEvent.new_status,
+    itemName: dbEvent.item_name,
+    quantity: dbEvent.quantity,
+    unitPrice,
+    reason: dbEvent.reason,
+    notes: dbEvent.notes,
+    createdAt:
+      dbEvent.created_at instanceof Date
+        ? dbEvent.created_at.toISOString()
+        : String(dbEvent.created_at),
+  };
+}
 
 export function mapToOrderLine(dbLine: DbOrderLine): OrderLine {
   const unitPrice =
@@ -107,6 +139,7 @@ export function mapToOrder(
 const memoryOrders: Map<string, DbOrder> = new Map();
 const memoryOrderLines: Map<string, DbOrderLine> = new Map();
 const memoryOrderCollaborators: Map<string, DbOrderCollaborator> = new Map();
+const memoryOrderAuditEvents: Map<string, DbOrderAuditEvent[]> = new Map();
 
 
 function isConnectionError(err: unknown): boolean {
@@ -142,7 +175,8 @@ export class OrderRepository {
       quantity: number;
       unitPrice: number;
       specialInstructions: string;
-    }>
+    }>,
+    actorData?: { id: string; name: string; role: string }
   ): Promise<OrderWithLines> {
     let client;
     try {
@@ -150,7 +184,7 @@ export class OrderRepository {
     } catch (connErr) {
       if (isConnectionError(connErr)) {
         logger.debug('PostgreSQL unavailable; creating order in memory');
-        return this.createOrderInMemory(orderData, linesData);
+        return this.createOrderInMemory(orderData, linesData, actorData);
       }
       throw connErr;
     }
@@ -197,6 +231,21 @@ export class OrderRepository {
         createdOrder.primary_waiter_email = userRes.rows[0].email;
       }
 
+      // Record initial order_created audit event
+      const auditEventQuery = `
+        INSERT INTO order_audit_events (
+          order_id, actor_id, actor_name, actor_role, event_type,
+          new_status, notes
+        ) VALUES ($1, $2, $3, $4, 'order_created', 'placed', $5)
+      `;
+      await client.query(auditEventQuery, [
+        createdOrder.id,
+        actorData?.id || createdOrder.primary_waiter_id,
+        actorData?.name || createdOrder.primary_waiter_name || 'Staff',
+        actorData?.role || 'waiter',
+        `Order created for ${orderData.tableNumber} with ${linesData.length} item(s)`,
+      ]);
+
       await client.query('COMMIT');
 
       const mappedLines = createdLines.map(mapToOrderLine);
@@ -222,7 +271,8 @@ export class OrderRepository {
       quantity: number;
       unitPrice: number;
       specialInstructions: string;
-    }>
+    }>,
+    actorData?: { id: string; name: string; role: string }
   ): OrderWithLines {
     const orderId = crypto.randomUUID();
     const now = new Date();
@@ -262,6 +312,25 @@ export class OrderRepository {
     for (const dbLine of createdDbLines) {
       memoryOrderLines.set(dbLine.id, dbLine);
     }
+
+    // Record initial order_created audit event in memory
+    const auditEvent: DbOrderAuditEvent = {
+      id: crypto.randomUUID(),
+      order_id: orderId,
+      actor_id: actorData?.id || orderData.primaryWaiterId,
+      actor_name: actorData?.name || 'Staff',
+      actor_role: actorData?.role || 'waiter',
+      event_type: 'order_created',
+      old_status: null,
+      new_status: 'placed',
+      item_name: null,
+      quantity: null,
+      unit_price: null,
+      reason: null,
+      notes: `Order created for ${orderData.tableNumber} with ${linesData.length} item(s)`,
+      created_at: now,
+    };
+    memoryOrderAuditEvents.set(orderId, [auditEvent]);
 
     const mappedLines = createdDbLines.map(mapToOrderLine);
     return mapToOrder(dbOrder, mappedLines);
@@ -618,22 +687,15 @@ export class OrderRepository {
   async updateOrderStatus(
     orderId: string,
     expectedStatus: OrderStatus,
-    targetStatus: OrderStatus
+    targetStatus: OrderStatus,
+    actorData?: { id: string; name: string; role: string },
+    reason?: string
   ): Promise<OrderWithLines | null> {
+    let client;
     try {
-      const updateQuery = `
-        UPDATE orders
-        SET status = $1, updated_at = NOW()
-        WHERE id = $2 AND status = $3
-        RETURNING id, table_number, primary_waiter_id, status, is_archived, total_price, created_at, updated_at
-      `;
-      const { rows } = await dbPool.query(updateQuery, [targetStatus, orderId, expectedStatus]);
-      if (rows.length === 0) {
-        return null;
-      }
-      return this.findById(orderId);
-    } catch (err) {
-      if (isConnectionError(err)) {
+      client = await dbPool.connect();
+    } catch (connErr) {
+      if (isConnectionError(connErr)) {
         logger.debug('PostgreSQL unavailable; updating order status in memory');
         const dbOrder = memoryOrders.get(orderId);
         if (!dbOrder) return null;
@@ -642,9 +704,72 @@ export class OrderRepository {
         dbOrder.status = targetStatus;
         dbOrder.updated_at = new Date();
         memoryOrders.set(orderId, dbOrder);
+
+        const auditEvent: DbOrderAuditEvent = {
+          id: crypto.randomUUID(),
+          order_id: orderId,
+          actor_id: actorData?.id || null,
+          actor_name: actorData?.name || 'Staff',
+          actor_role: actorData?.role || 'staff',
+          event_type: 'status_changed',
+          old_status: expectedStatus,
+          new_status: targetStatus,
+          item_name: null,
+          quantity: null,
+          unit_price: null,
+          reason: reason || null,
+          notes: null,
+          created_at: new Date(),
+        };
+        const events = memoryOrderAuditEvents.get(orderId) || [];
+        events.push(auditEvent);
+        memoryOrderAuditEvents.set(orderId, events);
+
         return this.findById(orderId);
       }
+      throw connErr;
+    }
+
+    try {
+      await client.query('BEGIN');
+
+      const updateQuery = `
+        UPDATE orders
+        SET status = $1, updated_at = NOW()
+        WHERE id = $2 AND status = $3
+        RETURNING id
+      `;
+      const { rows } = await client.query(updateQuery, [targetStatus, orderId, expectedStatus]);
+      if (rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      // Record status_changed audit event
+      const auditQuery = `
+        INSERT INTO order_audit_events (
+          order_id, actor_id, actor_name, actor_role, event_type,
+          old_status, new_status, reason
+        ) VALUES ($1, $2, $3, $4, 'status_changed', $5, $6, $7)
+      `;
+      await client.query(auditQuery, [
+        orderId,
+        actorData?.id || null,
+        actorData?.name || 'Staff',
+        actorData?.role || 'staff',
+        expectedStatus,
+        targetStatus,
+        reason || null,
+      ]);
+
+      await client.query('COMMIT');
+      return this.findById(orderId);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      logger.error('Failed to update order status in transaction', { error: err });
       throw err;
+    } finally {
+      client.release();
     }
   }
 
@@ -652,7 +777,8 @@ export class OrderRepository {
     orderId: string,
     lineId: string,
     voidReason: string,
-    newTotalPrice: number
+    newTotalPrice: number,
+    actorData?: { id: string; name: string; role: string }
   ): Promise<OrderWithLines | null> {
     let client;
     try {
@@ -673,6 +799,26 @@ export class OrderRepository {
         dbOrder.updated_at = new Date();
         memoryOrders.set(orderId, dbOrder);
 
+        const auditEvent: DbOrderAuditEvent = {
+          id: crypto.randomUUID(),
+          order_id: orderId,
+          actor_id: actorData?.id || null,
+          actor_name: actorData?.name || 'Staff',
+          actor_role: actorData?.role || 'staff',
+          event_type: 'line_voided',
+          old_status: null,
+          new_status: null,
+          item_name: dbLine.item_name,
+          quantity: dbLine.quantity,
+          unit_price: dbLine.unit_price,
+          reason: voidReason,
+          notes: null,
+          created_at: new Date(),
+        };
+        const events = memoryOrderAuditEvents.get(orderId) || [];
+        events.push(auditEvent);
+        memoryOrderAuditEvents.set(orderId, events);
+
         return this.findById(orderId);
       }
       throw connErr;
@@ -685,13 +831,14 @@ export class OrderRepository {
         UPDATE order_lines
         SET is_voided = TRUE, void_reason = $1, updated_at = NOW()
         WHERE id = $2 AND order_id = $3
-        RETURNING id
+        RETURNING id, item_name, quantity, unit_price
       `;
       const lineRes = await client.query(voidLineQuery, [voidReason, lineId, orderId]);
       if (lineRes.rows.length === 0) {
         await client.query('ROLLBACK');
         return null;
       }
+      const voidedLine = lineRes.rows[0];
 
       const updateOrderQuery = `
         UPDATE orders
@@ -700,6 +847,24 @@ export class OrderRepository {
         RETURNING id
       `;
       await client.query(updateOrderQuery, [newTotalPrice.toFixed(2), orderId]);
+
+      // Record line_voided audit event
+      const auditQuery = `
+        INSERT INTO order_audit_events (
+          order_id, actor_id, actor_name, actor_role, event_type,
+          item_name, quantity, unit_price, reason
+        ) VALUES ($1, $2, $3, $4, 'line_voided', $5, $6, $7, $8)
+      `;
+      await client.query(auditQuery, [
+        orderId,
+        actorData?.id || null,
+        actorData?.name || 'Staff',
+        actorData?.role || 'staff',
+        voidedLine.item_name,
+        voidedLine.quantity,
+        voidedLine.unit_price,
+        voidReason,
+      ]);
 
       await client.query('COMMIT');
       return this.findById(orderId);
@@ -721,7 +886,8 @@ export class OrderRepository {
       unitPrice: number;
       specialInstructions: string;
     },
-    newTotalPrice: number
+    newTotalPrice: number,
+    actorData?: { id: string; name: string; role: string }
   ): Promise<OrderWithLines | null> {
     let client;
     try {
@@ -753,6 +919,26 @@ export class OrderRepository {
         dbOrder.updated_at = now;
         memoryOrders.set(orderId, dbOrder);
 
+        const auditEvent: DbOrderAuditEvent = {
+          id: crypto.randomUUID(),
+          order_id: orderId,
+          actor_id: actorData?.id || null,
+          actor_name: actorData?.name || 'Staff',
+          actor_role: actorData?.role || 'staff',
+          event_type: 'line_added',
+          old_status: null,
+          new_status: null,
+          item_name: lineData.itemName,
+          quantity: lineData.quantity,
+          unit_price: lineData.unitPrice,
+          reason: null,
+          notes: lineData.specialInstructions || null,
+          created_at: now,
+        };
+        const events = memoryOrderAuditEvents.get(orderId) || [];
+        events.push(auditEvent);
+        memoryOrderAuditEvents.set(orderId, events);
+
         return this.findById(orderId);
       }
       throw connErr;
@@ -783,6 +969,24 @@ export class OrderRepository {
       `;
       await client.query(updateOrderQuery, [newTotalPrice.toFixed(2), orderId]);
 
+      // Record line_added audit event
+      const auditQuery = `
+        INSERT INTO order_audit_events (
+          order_id, actor_id, actor_name, actor_role, event_type,
+          item_name, quantity, unit_price, notes
+        ) VALUES ($1, $2, $3, $4, 'line_added', $5, $6, $7, $8)
+      `;
+      await client.query(auditQuery, [
+        orderId,
+        actorData?.id || null,
+        actorData?.name || 'Staff',
+        actorData?.role || 'staff',
+        lineData.itemName,
+        lineData.quantity,
+        lineData.unitPrice.toFixed(2),
+        lineData.specialInstructions || null,
+      ]);
+
       await client.query('COMMIT');
       return this.findById(orderId);
     } catch (err) {
@@ -797,7 +1001,8 @@ export class OrderRepository {
   async addCollaborator(
     orderId: string,
     userId: string,
-    userData?: { name: string; email: string; role: string }
+    userData?: { name: string; email: string; role: string },
+    actorData?: { id: string; name: string; role: string }
   ): Promise<OrderCollaborator> {
     try {
       const insertQuery = `
@@ -807,6 +1012,10 @@ export class OrderRepository {
       `;
       const { rows } = await dbPool.query(insertQuery, [orderId, userId]);
       const created = rows[0] as DbOrderCollaborator;
+
+      let targetName = userData?.name;
+      let targetEmail = userData?.email;
+      let targetRole = userData?.role;
 
       if (userData) {
         created.user_name = userData.name;
@@ -818,13 +1027,30 @@ export class OrderRepository {
           created.user_name = uRes.rows[0].name;
           created.user_email = uRes.rows[0].email;
           created.user_role = uRes.rows[0].role;
+          targetName = created.user_name;
+          targetEmail = created.user_email;
+          targetRole = created.user_role;
         }
       }
+
+      // Record collaborator_added audit event
+      const auditQuery = `
+        INSERT INTO order_audit_events (
+          order_id, actor_id, actor_name, actor_role, event_type, notes
+        ) VALUES ($1, $2, $3, $4, 'collaborator_added', $5)
+      `;
+      await dbPool.query(auditQuery, [
+        orderId,
+        actorData?.id || null,
+        actorData?.name || 'Staff',
+        actorData?.role || 'staff',
+        `Assigned collaborator: ${targetName || userId}${targetEmail ? ` (${targetEmail})` : ''}`,
+      ]);
+
       return mapToOrderCollaborator(created);
     } catch (err) {
       if (isConnectionError(err)) {
         logger.debug('PostgreSQL unavailable; adding collaborator in memory');
-        // Check uniqueness in memory
         for (const col of memoryOrderCollaborators.values()) {
           if (col.order_id === orderId && col.user_id === userId) {
             const dupErr = new Error('duplicate key value violates unique constraint') as Error & { code: string };
@@ -844,13 +1070,39 @@ export class OrderRepository {
           user_role: userData?.role,
         };
         memoryOrderCollaborators.set(collabId, dbCol);
+
+        const auditEvent: DbOrderAuditEvent = {
+          id: crypto.randomUUID(),
+          order_id: orderId,
+          actor_id: actorData?.id || null,
+          actor_name: actorData?.name || 'Staff',
+          actor_role: actorData?.role || 'staff',
+          event_type: 'collaborator_added',
+          old_status: null,
+          new_status: null,
+          item_name: null,
+          quantity: null,
+          unit_price: null,
+          reason: null,
+          notes: `Assigned collaborator: ${userData?.name || userId}`,
+          created_at: now,
+        };
+        const events = memoryOrderAuditEvents.get(orderId) || [];
+        events.push(auditEvent);
+        memoryOrderAuditEvents.set(orderId, events);
+
         return mapToOrderCollaborator(dbCol);
       }
       throw err;
     }
   }
 
-  async removeCollaborator(orderId: string, userId: string): Promise<boolean> {
+  async removeCollaborator(
+    orderId: string,
+    userId: string,
+    targetUserData?: { name: string; email: string; role: string },
+    actorData?: { id: string; name: string; role: string }
+  ): Promise<boolean> {
     try {
       const deleteQuery = `
         DELETE FROM order_collaborators
@@ -858,13 +1110,50 @@ export class OrderRepository {
         RETURNING id
       `;
       const { rows } = await dbPool.query(deleteQuery, [orderId, userId]);
-      return rows.length > 0;
+      if (rows.length === 0) return false;
+
+      // Record collaborator_removed audit event
+      const auditQuery = `
+        INSERT INTO order_audit_events (
+          order_id, actor_id, actor_name, actor_role, event_type, notes
+        ) VALUES ($1, $2, $3, $4, 'collaborator_removed', $5)
+      `;
+      await dbPool.query(auditQuery, [
+        orderId,
+        actorData?.id || null,
+        actorData?.name || 'Staff',
+        actorData?.role || 'staff',
+        `Removed collaborator: ${targetUserData?.name || userId}`,
+      ]);
+
+      return true;
     } catch (err) {
       if (isConnectionError(err)) {
         logger.debug('PostgreSQL unavailable; removing collaborator in memory');
         for (const [id, col] of memoryOrderCollaborators.entries()) {
           if (col.order_id === orderId && col.user_id === userId) {
             memoryOrderCollaborators.delete(id);
+
+            const auditEvent: DbOrderAuditEvent = {
+              id: crypto.randomUUID(),
+              order_id: orderId,
+              actor_id: actorData?.id || null,
+              actor_name: actorData?.name || 'Staff',
+              actor_role: actorData?.role || 'staff',
+              event_type: 'collaborator_removed',
+              old_status: null,
+              new_status: null,
+              item_name: null,
+              quantity: null,
+              unit_price: null,
+              reason: null,
+              notes: `Removed collaborator: ${targetUserData?.name || userId}`,
+              created_at: new Date(),
+            };
+            const events = memoryOrderAuditEvents.get(orderId) || [];
+            events.push(auditEvent);
+            memoryOrderAuditEvents.set(orderId, events);
+
             return true;
           }
         }
@@ -924,6 +1213,84 @@ export class OrderRepository {
     }
   }
 
+  async getOrderTimeline(orderId: string): Promise<OrderAuditEvent[]> {
+    try {
+      const query = `
+        SELECT id, order_id, actor_id, actor_name, actor_role, event_type,
+               old_status, new_status, item_name, quantity, unit_price, reason, notes, created_at
+        FROM order_audit_events
+        WHERE order_id = $1
+        ORDER BY created_at ASC, id ASC
+      `;
+      const { rows } = await dbPool.query(query, [orderId]);
+      return (rows as DbOrderAuditEvent[]).map(mapToOrderAuditEvent);
+    } catch (err) {
+      if (isConnectionError(err)) {
+        logger.debug('PostgreSQL unavailable; retrieving order timeline in memory');
+        const events = memoryOrderAuditEvents.get(orderId) || [];
+        return events
+          .slice()
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          .map(mapToOrderAuditEvent);
+      }
+      throw err;
+    }
+  }
+
+  async recordAuditEvent(input: RecordAuditEventInput): Promise<OrderAuditEvent> {
+    try {
+      const query = `
+        INSERT INTO order_audit_events (
+          order_id, actor_id, actor_name, actor_role, event_type,
+          old_status, new_status, item_name, quantity, unit_price, reason, notes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING id, order_id, actor_id, actor_name, actor_role, event_type,
+                  old_status, new_status, item_name, quantity, unit_price, reason, notes, created_at
+      `;
+      const { rows } = await dbPool.query(query, [
+        input.orderId,
+        input.actorId,
+        input.actorName,
+        input.actorRole,
+        input.eventType,
+        input.oldStatus || null,
+        input.newStatus || null,
+        input.itemName || null,
+        input.quantity || null,
+        input.unitPrice !== undefined && input.unitPrice !== null ? input.unitPrice.toFixed(2) : null,
+        input.reason || null,
+        input.notes || null,
+      ]);
+      return mapToOrderAuditEvent(rows[0] as DbOrderAuditEvent);
+    } catch (err) {
+      if (isConnectionError(err)) {
+        const id = crypto.randomUUID();
+        const now = new Date();
+        const dbEvent: DbOrderAuditEvent = {
+          id,
+          order_id: input.orderId,
+          actor_id: input.actorId,
+          actor_name: input.actorName,
+          actor_role: input.actorRole,
+          event_type: input.eventType,
+          old_status: input.oldStatus || null,
+          new_status: input.newStatus || null,
+          item_name: input.itemName || null,
+          quantity: input.quantity || null,
+          unit_price: input.unitPrice !== undefined && input.unitPrice !== null ? input.unitPrice.toFixed(2) : null,
+          reason: input.reason || null,
+          notes: input.notes || null,
+          created_at: now,
+        };
+        const events = memoryOrderAuditEvents.get(input.orderId) || [];
+        events.push(dbEvent);
+        memoryOrderAuditEvents.set(input.orderId, events);
+        return mapToOrderAuditEvent(dbEvent);
+      }
+      throw err;
+    }
+  }
+
   getAllOrdersForMemory(): DbOrder[] {
     return Array.from(memoryOrders.values());
   }
@@ -936,10 +1303,19 @@ export class OrderRepository {
     return Array.from(memoryOrderCollaborators.values());
   }
 
+  getAllAuditEventsForMemory(): DbOrderAuditEvent[] {
+    const all: DbOrderAuditEvent[] = [];
+    for (const list of memoryOrderAuditEvents.values()) {
+      all.push(...list);
+    }
+    return all;
+  }
+
   resetMemoryStore(): void {
     memoryOrders.clear();
     memoryOrderLines.clear();
     memoryOrderCollaborators.clear();
+    memoryOrderAuditEvents.clear();
   }
 
   // Testing helper for clean in-memory state

@@ -468,6 +468,66 @@ router.delete(
   }
 );
 
+/**
+ * GET /api/orders/:id/timeline
+ * Retrieve immutable audit history timeline for an order
+ */
+router.get(
+  '/:id/timeline',
+  requireStaff,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      const timeline = await orderService.getOrderTimeline(req.user, orderId);
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          timeline,
+          events: timeline,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/orders/:id/history (alias for timeline)
+ */
+router.get(
+  '/:id/history',
+  requireStaff,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      const timeline = await orderService.getOrderTimeline(req.user, orderId);
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          timeline,
+          events: timeline,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export const orderRouter = router;
+
 
 
