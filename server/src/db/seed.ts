@@ -25,7 +25,20 @@ export const DEFAULT_SEED_USERS: SeedUserConfig[] = [
     password: process.env.SEED_WAITER_PASSWORD || 'WaiterPassword123!',
     role: 'waiter',
   },
+  {
+    email: 'waiter2@restaurant.com',
+    name: 'Taylor Jordan (Waiter 2)',
+    password: 'WaiterPassword123!',
+    role: 'waiter',
+  },
+  {
+    email: 'waiter3@restaurant.com',
+    name: 'Morgan Blake (Waiter 3)',
+    password: 'WaiterPassword123!',
+    role: 'waiter',
+  },
 ];
+
 
 export interface SeedMenuItemConfig {
   name: string;

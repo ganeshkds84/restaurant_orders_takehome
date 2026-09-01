@@ -79,3 +79,18 @@ Log of decisions that shaped this codebase — where a real alternative existed 
 - **Chose:** Retaining voided lines in `order_lines` with `is_voided = true` and `void_reason`, while recalculating `orders.total_price` strictly from active (non-voided) lines.
 - **Rejected:** Physically deleting lines (`DELETE FROM order_lines`) or relying on frontend subtraction.
 - **Why:** Preserving voided lines maintains a complete audit trail of what was requested, why it was voided, and who requested it. Recalculating the authoritative total on the server guarantees financial precision down to the cent without trusting client arithmetic.
+
+---
+
+## Decision 12: Normalized Many-to-Many Junction Table for Collaborators vs. JSON/Array Column
+- **Chose:** Explicit relational junction table `order_collaborators (order_id, user_id)` with `UNIQUE(order_id, user_id)` constraint and foreign keys (`ON DELETE CASCADE`).
+- **Rejected:** Storing a PostgreSQL `UUID[]` array or JSON array column on the `orders` table.
+- **Why:** A normalized junction table guarantees relational integrity against `users.id` and `orders.id`, prevents orphaned user references upon deletion, enforces uniqueness at the database level, and allows fast indexed joins when querying all orders a waiter is collaborating on (`idx_order_collaborators_user_id`).
+
+---
+
+## Decision 13: Centralized Order Authorization Helper vs. Scattered Controller Checks
+- **Chose:** Centralizing order access and modification rules in `order.auth.ts` (`canAccessOrder`, `canModifyOrder`, `canManageCollaborators`).
+- **Rejected:** Writing ad-hoc `if (user.id === order.primary_waiter_id || ...)` conditionals across multiple route handlers and service methods.
+- **Why:** Consolidating authorization rules ensures consistent permission enforcement across single order views, listing, line operations, lifecycle mutations, and collaborator management. It prevents privilege escalation bugs and makes security rules easy to audit and unit test independently.
+

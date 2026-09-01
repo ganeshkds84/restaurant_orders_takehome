@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Order, OrderStatus } from '../types/order';
+import { Order, OrderStatus, OrderCollaborator } from '../types/order';
 import {
   fetchOrdersApi,
   fetchOrderByIdApi,
   updateOrderStatusApi,
   cancelOrderApi,
   voidOrderLineApi,
+  fetchEligibleWaitersApi,
+  addCollaboratorApi,
+  removeCollaboratorApi,
 } from '../services/order.service';
 import {
   Receipt,
@@ -23,6 +26,9 @@ import {
   Check,
   Ban,
   Slash,
+  Users,
+  UserPlus,
+  UserMinus,
 } from 'lucide-react';
 
 interface OrderListProps {
@@ -52,6 +58,17 @@ export const OrderList: React.FC<OrderListProps> = () => {
   const [cancellingTable, setCancellingTable] = useState<string>('');
   const [cancelReason, setCancelReason] = useState<string>('');
   const [isSubmittingCancel, setIsSubmittingCancel] = useState<boolean>(false);
+
+  // Collaborator modal state
+  const [collabModalOpen, setCollabModalOpen] = useState<boolean>(false);
+  const [collabOrderId, setCollabOrderId] = useState<string | null>(null);
+  const [collabTableNumber, setCollabTableNumber] = useState<string>('');
+  const [eligibleWaiters, setEligibleWaiters] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [selectedWaiterId, setSelectedWaiterId] = useState<string>('');
+  const [collabError, setCollabError] = useState<string | null>(null);
+  const [isLoadingWaiters, setIsLoadingWaiters] = useState<boolean>(false);
+  const [isSubmittingCollab, setIsSubmittingCollab] = useState<boolean>(false);
+
 
   const loadOrders = async () => {
     if (!token) return;
@@ -167,7 +184,106 @@ export const OrderList: React.FC<OrderListProps> = () => {
     }
   };
 
+  // Open Add Collaborator Dialog
+  const openAddCollaboratorDialog = async (order: Order) => {
+    if (!token) return;
+    setCollabOrderId(order.id);
+    setCollabTableNumber(order.tableNumber);
+    setSelectedWaiterId('');
+    setCollabError(null);
+    setCollabModalOpen(true);
+    setIsLoadingWaiters(true);
+
+    try {
+      const allWaiters = await fetchEligibleWaitersApi(token);
+      // Filter out primary waiter and already assigned collaborators
+      const existingCollabUserIds = new Set((order.collaborators || []).map((c) => c.userId));
+      const filtered = allWaiters.filter(
+        (w) => w.id !== order.primaryWaiterId && !existingCollabUserIds.has(w.id)
+      );
+      setEligibleWaiters(filtered);
+      if (filtered.length > 0) {
+        setSelectedWaiterId(filtered[0].id);
+      }
+    } catch (err) {
+      setCollabError(err instanceof Error ? err.message : 'Failed to load eligible waiters');
+    } finally {
+      setIsLoadingWaiters(false);
+    }
+  };
+
+  // Submit Add Collaborator
+  const submitAddCollaborator = async () => {
+    if (!token || !collabOrderId || !selectedWaiterId) {
+      setCollabError('Please select a waiter to assign.');
+      return;
+    }
+
+    try {
+      setIsSubmittingCollab(true);
+      setCollabError(null);
+      setErrorMessage(null);
+      setActionSuccessMessage(null);
+
+      const assignedCollab = await addCollaboratorApi(token, collabOrderId, selectedWaiterId);
+      const selectedWaiterObj = eligibleWaiters.find((w) => w.id === selectedWaiterId);
+
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (o.id !== collabOrderId) return o;
+          const currentCollabs = o.collaborators || [];
+          const newCollab: OrderCollaborator = {
+            id: assignedCollab.id,
+            orderId: collabOrderId,
+            userId: selectedWaiterId,
+            user: selectedWaiterObj
+              ? { id: selectedWaiterObj.id, name: selectedWaiterObj.name, email: selectedWaiterObj.email, role: 'waiter' }
+              : undefined,
+            createdAt: new Date().toISOString(),
+          };
+          return {
+            ...o,
+            collaborators: [...currentCollabs, newCollab],
+          };
+        })
+      );
+
+      setCollabModalOpen(false);
+      setActionSuccessMessage(`Waiter ${selectedWaiterObj?.name || ''} assigned as collaborator successfully`);
+    } catch (err) {
+      setCollabError(err instanceof Error ? err.message : 'Failed to add collaborator');
+    } finally {
+      setIsSubmittingCollab(false);
+    }
+  };
+
+  // Handle Remove Collaborator
+  const handleRemoveCollaborator = async (orderId: string, userId: string, waiterName?: string) => {
+    if (!token) return;
+    try {
+      setErrorMessage(null);
+      setActionSuccessMessage(null);
+
+      await removeCollaboratorApi(token, orderId, userId);
+
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (o.id !== orderId) return o;
+          return {
+            ...o,
+            collaborators: (o.collaborators || []).filter((c) => c.userId !== userId),
+          };
+        })
+      );
+
+      setActionSuccessMessage(`Collaborator ${waiterName || ''} removed successfully`);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to remove collaborator');
+    }
+  };
+
   const getStatusBadge = (status: OrderStatus) => {
+
     switch (status) {
       case 'placed':
         return (
@@ -334,6 +450,9 @@ export const OrderList: React.FC<OrderListProps> = () => {
               .reduce((sum, l) => sum + l.quantity, 0);
             const isOpen = order.status !== 'served' && order.status !== 'cancelled';
             const isCancellable = order.status === 'placed' || order.status === 'accepted';
+            const isPrimaryWaiter = user?.id === order.primaryWaiterId;
+            const isAssignedCollab = order.collaborators?.some((c) => c.userId === user?.id);
+            const canManageThisOrderCollabs = user?.role === 'manager' || isPrimaryWaiter;
 
             return (
               <div
@@ -383,8 +502,38 @@ export const OrderList: React.FC<OrderListProps> = () => {
                     </div>
 
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         {getStatusBadge(order.status)}
+                        {isPrimaryWaiter && (
+                          <span
+                            data-testid={`badge-primary-waiter-${order.id}`}
+                            style={{
+                              fontSize: '0.6875rem',
+                              padding: '0.15rem 0.45rem',
+                              background: 'rgba(99, 102, 241, 0.18)',
+                              color: 'var(--accent-primary)',
+                              borderRadius: '4px',
+                              fontWeight: 600,
+                            }}
+                          >
+                            Primary Waiter
+                          </span>
+                        )}
+                        {!isPrimaryWaiter && isAssignedCollab && (
+                          <span
+                            data-testid={`badge-collaborator-${order.id}`}
+                            style={{
+                              fontSize: '0.6875rem',
+                              padding: '0.15rem 0.45rem',
+                              background: 'rgba(20, 184, 166, 0.18)',
+                              color: '#2dd4bf',
+                              borderRadius: '4px',
+                              fontWeight: 600,
+                            }}
+                          >
+                            Collaborator
+                          </span>
+                        )}
                         <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                           {activeLinesCount} active {activeLinesCount === 1 ? 'item' : 'items'}
                         </span>
@@ -397,6 +546,7 @@ export const OrderList: React.FC<OrderListProps> = () => {
                           alignItems: 'center',
                           gap: '0.75rem',
                           marginTop: '0.2rem',
+                          flexWrap: 'wrap',
                         }}
                       >
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -405,9 +555,24 @@ export const OrderList: React.FC<OrderListProps> = () => {
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                           <User size={12} /> Waiter: {order.primaryWaiter?.name || order.primaryWaiterId}
                         </span>
+                        {order.collaborators && order.collaborators.length > 0 && (
+                          <span
+                            data-testid={`collab-count-indicator-${order.id}`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              color: 'var(--accent-primary)',
+                            }}
+                          >
+                            <Users size={12} /> +{order.collaborators.length}{' '}
+                            {order.collaborators.length === 1 ? 'collaborator' : 'collaborators'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
+
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
                     <div style={{ textAlign: 'right' }}>
@@ -732,6 +897,97 @@ export const OrderList: React.FC<OrderListProps> = () => {
                       ))}
                     </div>
 
+                    {/* Collaborators & Access Section */}
+                    <div
+                      style={{
+                        background: 'rgba(15, 23, 42, 0.5)',
+                        border: '1px solid var(--border-glass)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.85rem 1rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.65rem',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '0.5rem',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <Users size={16} color="var(--accent-primary)" />
+                          <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            Collaborating Waiters ({order.collaborators?.length || 0})
+                          </span>
+                        </div>
+
+                        {canManageThisOrderCollabs && isOpen && (
+                          <button
+                            className="btn btn-secondary"
+                            data-testid={`btn-open-add-collab-${order.id}`}
+                            style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', gap: '0.35rem' }}
+                            onClick={() => openAddCollaboratorDialog(order)}
+                          >
+                            <UserPlus size={13} /> Add Collaborator
+                          </button>
+                        )}
+                      </div>
+
+                      {(!order.collaborators || order.collaborators.length === 0) ? (
+                        <div
+                          data-testid={`no-collabs-${order.id}`}
+                          style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}
+                        >
+                          No collaborators assigned yet. {canManageThisOrderCollabs ? 'Assign team members to collaborate on this order.' : ''}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                          {order.collaborators.map((c) => (
+                            <div
+                              key={c.id || c.userId}
+                              data-testid={`collaborator-tag-${c.userId}`}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.45rem',
+                                padding: '0.25rem 0.6rem',
+                                background: 'rgba(99, 102, 241, 0.12)',
+                                border: '1px solid rgba(99, 102, 241, 0.3)',
+                                borderRadius: 'var(--radius-full)',
+                                fontSize: '0.75rem',
+                                color: 'var(--text-primary)',
+                              }}
+                            >
+                              <span style={{ fontWeight: 500 }}>{c.user?.name || c.userId}</span>
+                              {canManageThisOrderCollabs && isOpen && (
+                                <button
+                                  type="button"
+                                  data-testid={`btn-remove-collab-${c.userId}`}
+                                  aria-label={`Remove ${c.user?.name || 'collaborator'}`}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#f87171',
+                                    cursor: 'pointer',
+                                    padding: '0 0.1rem',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                  }}
+                                  onClick={() => handleRemoveCollaborator(order.id, c.userId, c.user?.name)}
+                                >
+                                  <UserMinus size={12} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <div
                       style={{
                         display: 'flex',
@@ -926,6 +1182,124 @@ export const OrderList: React.FC<OrderListProps> = () => {
           </div>
         </div>
       )}
+
+      {/* Add Collaborator Modal */}
+      {collabModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-collab-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '1rem',
+          }}
+        >
+          <div
+            className="glass-card"
+            style={{
+              width: '100%',
+              maxWidth: '460px',
+              padding: '1.75rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.25rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--accent-primary)' }}>
+              <UserPlus size={22} />
+              <h3 id="add-collab-title" style={{ fontSize: '1.25rem', margin: 0, color: 'var(--text-primary)' }}>
+                Add Collaborator to {collabTableNumber}
+              </h3>
+            </div>
+
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', margin: 0 }}>
+              Assign another waiter to collaborate on this ticket. Collaborators can view, update lifecycle status, add items, and void items.
+            </p>
+
+            {collabError && (
+              <div
+                style={{
+                  padding: '0.75rem',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  color: '#fca5a5',
+                  fontSize: '0.8125rem',
+                }}
+              >
+                {collabError}
+              </div>
+            )}
+
+            {isLoadingWaiters ? (
+              <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                Loading eligible waitstaff...
+              </div>
+            ) : eligibleWaiters.length === 0 ? (
+              <div
+                data-testid="no-eligible-waiters-msg"
+                style={{
+                  padding: '0.85rem',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.8125rem',
+                  textAlign: 'center',
+                }}
+              >
+                No other eligible waiters available to assign.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Select Waiter <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <select
+                  className="input-field"
+                  data-testid="collab-select-waiter"
+                  value={selectedWaiterId}
+                  onChange={(e) => setSelectedWaiterId(e.target.value)}
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                >
+                  {eligibleWaiters.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} ({w.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setCollabModalOpen(false)}
+                disabled={isSubmittingCollab}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                data-testid="confirm-add-collab-btn"
+                onClick={submitAddCollaborator}
+                disabled={isSubmittingCollab || isLoadingWaiters || eligibleWaiters.length === 0}
+              >
+                {isSubmittingCollab ? 'Assigning...' : 'Assign Collaborator'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

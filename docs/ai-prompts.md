@@ -152,8 +152,43 @@ IMPORTANT:
 - Frontend interactive lifecycle controls in `OrderList.tsx` with status progression badges, state-adapted action buttons, cancel confirmation modal, and line void modal with required reason validation.
 - 9 new backend test cases (25 order tests, 62 total backend tests) and 4 new frontend test cases (22 total frontend tests) totaling 84 automated tests.
 
+## Phase 6 — Collaborators & Order Access
+
+### Prompt
+```
+# Phase 6 — Collaborators & Order Access
+
+We have completed and committed:
+* Phase 1 — Project Foundation
+* Phase 2 — Authentication + Server-Side RBAC
+* Phase 3 — Menu Item Management + Availability
+* Phase 4 — Order Creation + Order Lines
+* Phase 5 — Order Lifecycle & Business Rules
+
+Now implement ONLY the Collaborators and Order Access functionality required by the Restaurant Orders take-home assignment.
+
+IMPORTANT:
+* Re-read the original assignment specification before coding.
+* The assignment specification is the source of truth.
+* Do not invent collaborator functionality that is not required.
+* Preserve all existing authentication, RBAC, menu, order creation, and lifecycle functionality.
+* Do not rewrite working functionality unnecessarily.
+* All authorization MUST be enforced server-side.
+* Do not trust frontend role/user IDs.
+* Do not implement advanced search/filter/sort/pagination, bulk actions, CSV export, dashboard analytics, audit/history timeline, or slow-order alerts yet unless the specification explicitly requires a small dependency for collaborators.
+```
+
+### What you got
+- Database migration `004_create_order_collaborators.sql` creating table `order_collaborators` with foreign keys, unique constraint `uq_order_collaborators_order_user(order_id, user_id)`, and performance indexes.
+- Data types for `OrderCollaborator`, `DbOrderCollaborator`, and extended `Order` / `OrderWithLines`.
+- Centralized authorization module `server/src/orders/order.auth.ts` enforcing `canAccessOrder`, `canModifyOrder`, and `canManageCollaborators` across all operations.
+- Collaborator endpoints (`GET /api/orders/eligible-waiters`, `GET /api/orders/:id/collaborators`, `POST /api/orders/:id/collaborators`, `DELETE /api/orders/:id/collaborators/:userId`) with strict server-side validation.
+- Interactive frontend collaborator UI in `OrderList.tsx` with Primary Waiter and Collaborator badges, expanded card Collaborators panel, and Add Collaborator modal with waitstaff dropdown.
+- 27 new automated backend test cases and 4 new frontend test cases, bringing the repository total to 115 passing tests across server and client.
+
 ### What you corrected
-1. **Type Imports in Repository**: Added `OrderStatus` to the type imports in `server/src/orders/order.repository.ts` to satisfy strict TypeScript compiler checks.
-2. **Unused React Import in Tests**: Removed unused `import React from 'react'` in `client/tests/OrderLifecycle.test.tsx` to keep `tsc --noEmit` warning-free.
-3. **Single Order Mock Handler**: Enhanced `OrderLifecycle.test.tsx` fetch mock to return single order data for `GET /api/orders/:id` during ticket expand actions.
+1. **Repository In-Memory User ID Matching**: Fixed in-memory user store in `collaborators.test.ts` to preserve consistent pre-seeded UUIDs for secondary test waiters (`waiter3`) rather than generating random UUIDs that caused target lookup mismatches.
+2. **Type Imports in Order Repository**: Added `DbOrderCollaborator` and `OrderCollaborator` to type imports in `server/src/orders/order.repository.ts` to satisfy `tsc` build requirements.
+3. **Frontend Test Mock Fresh State**: Updated Vitest mock fetch in `client/tests/Collaborators.test.tsx` to return dynamically cloned JSON instances of mock orders upon expansion, ensuring UI updates immediately reflect collaborator additions.
+
 

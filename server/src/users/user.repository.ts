@@ -55,7 +55,20 @@ const memoryUsers: Map<string, DbUser> = new Map([
       updated_at: new Date('2026-01-01T00:00:00Z'),
     },
   ],
+  [
+    'waiter3@restaurant.com',
+    {
+      id: '44444444-4444-4444-4444-444444444444',
+      email: 'waiter3@restaurant.com',
+      name: 'Morgan Blake (Waiter 3)',
+      password_hash: defaultWaiterHash,
+      role: 'waiter',
+      created_at: new Date('2026-01-01T00:00:00Z'),
+      updated_at: new Date('2026-01-01T00:00:00Z'),
+    },
+  ],
 ]);
+
 
 function isConnectionError(err: unknown): boolean {
   if (!err) return false;
@@ -149,6 +162,31 @@ export class UserRepository {
     }
   }
 
+  async findAllByRole(role: UserRole): Promise<DbUser[]> {
+    try {
+      const query = `
+        SELECT id, email, name, password_hash, role, created_at, updated_at
+        FROM users
+        WHERE role = $1
+        ORDER BY name ASC
+      `;
+      const { rows } = await dbPool.query(query, [role]);
+      return rows as DbUser[];
+    } catch (err) {
+      if (isConnectionError(err)) {
+        logger.debug('PostgreSQL unavailable; using in-memory store for findAllByRole');
+        const list: DbUser[] = [];
+        for (const user of memoryUsers.values()) {
+          if (user.role === role) {
+            list.push(user);
+          }
+        }
+        return list.sort((a, b) => a.name.localeCompare(b.name));
+      }
+      throw err;
+    }
+  }
+
   // Helper for test resets
   resetMemoryStore(): void {
     memoryUsers.set('manager@restaurant.com', {
@@ -178,7 +216,17 @@ export class UserRepository {
       created_at: new Date('2026-01-01T00:00:00Z'),
       updated_at: new Date('2026-01-01T00:00:00Z'),
     });
+    memoryUsers.set('waiter3@restaurant.com', {
+      id: '44444444-4444-4444-4444-444444444444',
+      email: 'waiter3@restaurant.com',
+      name: 'Morgan Blake (Waiter 3)',
+      password_hash: defaultWaiterHash,
+      role: 'waiter',
+      created_at: new Date('2026-01-01T00:00:00Z'),
+      updated_at: new Date('2026-01-01T00:00:00Z'),
+    });
   }
 }
 
 export const userRepository = new UserRepository();
+

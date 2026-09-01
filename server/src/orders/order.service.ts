@@ -1,11 +1,13 @@
 import { OrderRepository } from './order.repository.js';
 import { MenuRepository } from '../menu/menu.repository.js';
+import { UserRepository, mapToUserResponse } from '../users/user.repository.js';
 import { AppError } from '../errors/app-error.js';
 import { UserResponse } from '../types/auth.js';
 import {
   OrderStatus,
   CreateOrderInput,
   OrderWithLines,
+  OrderCollaborator,
   OrderQueryFilters,
   AddOrderLineInput,
 } from '../types/order.js';
@@ -14,12 +16,18 @@ import {
   canVoidOrderLines,
   canAddLinesToOrder,
 } from './order.state-machine.js';
+import {
+  canAccessOrder,
+  canModifyOrder,
+  canManageCollaborators,
+} from './order.auth.js';
 import { logger } from '../logging/logger.js';
 
 export class OrderService {
   constructor(
     private orderRepo: OrderRepository = new OrderRepository(),
-    private menuRepo: MenuRepository = new MenuRepository()
+    private menuRepo: MenuRepository = new MenuRepository(),
+    private userRepo: UserRepository = new UserRepository()
   ) {}
 
   async createOrder(
@@ -109,9 +117,9 @@ export class OrderService {
       throw AppError.notFound(`Order not found: ${orderId}`);
     }
 
-    // Role-based authorization: Waiters can only view their own orders; Managers can view all
-    if (user.role === 'waiter' && order.primaryWaiterId !== user.id) {
-      throw AppError.forbidden('Forbidden: you can only view orders you created');
+    // Authorization: Managers have restaurant-wide access; Waiters can view if primary waiter OR collaborator
+    if (!canAccessOrder(user, order)) {
+      throw AppError.forbidden('Forbidden: you do not have permission to view this order');
     }
 
     return order;
@@ -123,9 +131,9 @@ export class OrderService {
   ): Promise<OrderWithLines[]> {
     const scopedFilters: OrderQueryFilters = { ...filters };
 
-    // Waiters can only query orders where they are the primary waiter
+    // Waiters receive orders where they are primary waiter OR assigned collaborator
     if (user.role === 'waiter') {
-      scopedFilters.primaryWaiterId = user.id;
+      scopedFilters.waiterId = user.id;
     }
 
     return this.orderRepo.findAll(scopedFilters);
@@ -145,9 +153,9 @@ export class OrderService {
       throw AppError.notFound(`Order not found: ${orderId}`);
     }
 
-    // Authorization: Waiters can only modify their own orders; Managers have restaurant-wide permissions
-    if (user.role === 'waiter' && order.primaryWaiterId !== user.id) {
-      throw AppError.forbidden('Forbidden: you can only update orders you created');
+    // Authorization: Managers, primary waiters, and assigned collaborators can transition order status
+    if (!canModifyOrder(user, order)) {
+      throw AppError.forbidden('Forbidden: you do not have permission to update this order');
     }
 
     // Validate state transition against business rules
@@ -211,9 +219,9 @@ export class OrderService {
       throw AppError.notFound(`Order not found: ${orderId}`);
     }
 
-    // Authorization check
-    if (user.role === 'waiter' && order.primaryWaiterId !== user.id) {
-      throw AppError.forbidden('Forbidden: you can only void lines on orders you created');
+    // Authorization: Managers, primary waiters, and assigned collaborators can void lines
+    if (!canModifyOrder(user, order)) {
+      throw AppError.forbidden('Forbidden: you do not have permission to void lines on this order');
     }
 
     // State machine check: Order must remain open (before Served or Cancelled)
@@ -277,9 +285,9 @@ export class OrderService {
       throw AppError.notFound(`Order not found: ${orderId}`);
     }
 
-    // Authorization check
-    if (user.role === 'waiter' && order.primaryWaiterId !== user.id) {
-      throw AppError.forbidden('Forbidden: you can only add lines to orders you created');
+    // Authorization: Managers, primary waiters, and assigned collaborators can add lines
+    if (!canModifyOrder(user, order)) {
+      throw AppError.forbidden('Forbidden: you do not have permission to add lines to this order');
     }
 
     // State machine check: Lines can be added before served
@@ -337,6 +345,139 @@ export class OrderService {
 
     return updatedOrder;
   }
+
+  /**
+   * Add a collaborator to an order.
+   * Only the primary waiter or a manager is authorized to add collaborators.
+   */
+  async addCollaborator(
+    user: UserResponse,
+    orderId: string,
+    targetUserId: string
+  ): Promise<OrderCollaborator> {
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) {
+      throw AppError.notFound(`Order not found: ${orderId}`);
+    }
+
+    // Authorization: Only primary waiter or manager can manage collaborators
+    if (!canManageCollaborators(user, order)) {
+      throw AppError.forbidden(
+        'Forbidden: only the primary waiter or a manager can add collaborators to this order'
+      );
+    }
+
+    // Validate target user exists
+    const targetUser = await this.userRepo.findById(targetUserId);
+    if (!targetUser) {
+      throw AppError.notFound(`Target user not found: ${targetUserId}`);
+    }
+
+    // Validate target user role: Must be a waiter
+    if (targetUser.role !== 'waiter') {
+      throw AppError.badRequest(
+        `Cannot add user with role '${targetUser.role}' as collaborator: only waiters can be assigned as collaborators`
+      );
+    }
+
+    // Target user cannot be the primary waiter
+    if (targetUserId === order.primaryWaiterId) {
+      throw AppError.badRequest('Target user is already the primary waiter on this order');
+    }
+
+    // Target user cannot already be a collaborator
+    if (order.collaborators.some((c) => c.userId === targetUserId)) {
+      throw AppError.badRequest('User is already assigned as a collaborator on this order');
+    }
+
+    logger.info('Adding collaborator to order', {
+      orderId,
+      targetUserId,
+      assignedBy: user.id,
+      assignedByRole: user.role,
+    });
+
+    const createdCollab = await this.orderRepo.addCollaborator(orderId, targetUserId, {
+      name: targetUser.name,
+      email: targetUser.email,
+      role: targetUser.role,
+    });
+
+    return createdCollab;
+  }
+
+  /**
+   * Remove a collaborator from an order.
+   * Only the primary waiter or a manager is authorized to remove collaborators.
+   */
+  async removeCollaborator(
+    user: UserResponse,
+    orderId: string,
+    targetUserId: string
+  ): Promise<boolean> {
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) {
+      throw AppError.notFound(`Order not found: ${orderId}`);
+    }
+
+    // Authorization: Only primary waiter or manager can manage collaborators
+    if (!canManageCollaborators(user, order)) {
+      throw AppError.forbidden(
+        'Forbidden: only the primary waiter or a manager can remove collaborators from this order'
+      );
+    }
+
+    // Primary waiter cannot be removed as a collaborator
+    if (targetUserId === order.primaryWaiterId) {
+      throw AppError.badRequest('The primary waiter is not a collaborator and cannot be removed as one');
+    }
+
+    // Check collaborator exists on order
+    const isAssigned = order.collaborators.some((c) => c.userId === targetUserId);
+    if (!isAssigned) {
+      throw AppError.notFound(
+        `Collaborator assignment not found for user ${targetUserId} on order ${orderId}`
+      );
+    }
+
+    logger.info('Removing collaborator from order', {
+      orderId,
+      targetUserId,
+      removedBy: user.id,
+      removedByRole: user.role,
+    });
+
+    const removed = await this.orderRepo.removeCollaborator(orderId, targetUserId);
+    return removed;
+  }
+
+  /**
+   * Get collaborators for an order.
+   */
+  async getCollaborators(
+    user: UserResponse,
+    orderId: string
+  ): Promise<OrderCollaborator[]> {
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) {
+      throw AppError.notFound(`Order not found: ${orderId}`);
+    }
+
+    if (!canAccessOrder(user, order)) {
+      throw AppError.forbidden('Forbidden: you do not have permission to view this order');
+    }
+
+    return order.collaborators;
+  }
+
+  /**
+   * List all eligible waiters in the restaurant for collaborator selection.
+   */
+  async getEligibleWaiters(user: UserResponse): Promise<UserResponse[]> {
+    const dbUsers = await this.userRepo.findAllByRole('waiter');
+    return dbUsers.map(mapToUserResponse);
+  }
 }
+
 
 

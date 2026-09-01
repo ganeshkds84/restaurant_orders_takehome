@@ -34,33 +34,45 @@
   - Added REST lifecycle endpoints (`PATCH /api/orders/:id/status`, `POST /api/orders/:id/cancel`, `POST /api/orders/:id/lines`, `PATCH /api/orders/:id/lines/:lineId/void`).
   - Built interactive frontend lifecycle UI in `OrderList.tsx` with status progression badges, state-adapted action buttons, cancel confirmation modal, and line void modal with reason validation.
   - Added 9 new backend test cases (25 order tests, 62 total backend tests) and 4 new frontend test cases (22 total frontend tests), bringing the repository total to 84 automated tests.
+- **Session 6: Collaborators & Order Access (Phase 6)**
+  - Implemented database schema migration (`004_create_order_collaborators.sql`) with table `order_collaborators`, `ON DELETE CASCADE` foreign keys, unique constraint `uq_order_collaborators_order_user(order_id, user_id)`, and performance indexes.
+  - Implemented `OrderCollaborator` types, `DbOrderCollaborator`, `AddCollaboratorInput`, and `waiterId` filter in `OrderQueryFilters`.
+  - Added `findAllByRole(role)` to `UserRepository` and updated test seeds with `waiter2` and `waiter3`.
+  - Implemented `addCollaborator`, `removeCollaborator`, `getCollaborators`, and `isCollaborator` in `OrderRepository` with atomic SQL queries and offline dual-mode in-memory stores.
+  - Created centralized authorization engine `order.auth.ts` (`canAccessOrder`, `canModifyOrder`, `canManageCollaborators`) strictly enforcing that only primary waiters and managers can manage collaborators, and only assigned collaborators, primary waiters, and managers can access/modify orders.
+  - Built collaborator endpoints (`GET /api/orders/eligible-waiters`, `GET /api/orders/:id/collaborators`, `POST /api/orders/:id/collaborators`, `DELETE /api/orders/:id/collaborators/:userId`) and integrated authorization across all order routes.
+  - Built frontend collaborator UI in `OrderList.tsx` with Primary Waiter / Collaborator badges, expanded card Collaborators panel with team tags and remove buttons, and an Add Collaborator modal with eligible waiter dropdown.
+  - Created 27 new backend automated test cases (`tests/collaborators.test.ts`) and 4 new frontend test cases (`tests/Collaborators.test.tsx`), bringing total test suite to 115 passing automated tests (89 backend, 26 frontend).
 - **Future Sessions (Planned)**
-  - Session 6: Waiter Collaborators & Order Search/Filters/Pagination (Phase 6)
-  - Session 7: Bulk Menu Operations, Dashboard Analytics, Audit History & Slow-Order Alerts (Phase 7)
+  - Session 7: Order Search, Filter, Sort & Server-Side Pagination, Bulk Menu Operations & CSV Export (Phase 7)
+  - Session 8: Dashboard Analytics & Audit/History Event Timeline (Phase 8)
+  - Session 9: Slow-Order Alert System (Phase 9)
 
 ---
 
 ## 2. Order of Implementation and Rationale
-1. **Authoritative State Machine**: Encapsulated state transition rules in a dedicated state machine service before route wiring to prevent scattered conditional logic.
-2. **Atomic Repository Operations & Concurrency**: Implemented atomic conditional updates (`WHERE id = $1 AND status = $2`) preventing race conditions during simultaneous status updates.
-3. **Domain Business Rules**: Implemented cancellation boundaries, line voiding with required reason validation, and dynamic total recalculations in `OrderService`.
-4. **Backend Automated Tests**: Wrote comprehensive tests covering legal progressions, all invalid transitions, cancellation boundaries, line voiding, and RBAC isolation.
-5. **Frontend Lifecycle Controls**: Built state-adapted action buttons, cancel confirmation modal, and line void modal with required reason validation in `OrderList.tsx`.
-6. **Frontend Integration Tests**: Validated lifecycle transitions, cancel dialog, line voiding modal, and total recalculation in Vitest.
+1. **Relational Schema Migration**: Defined `order_collaborators` junction table with foreign keys and unique constraint first to establish data consistency.
+2. **Centralized Authorization Helper**: Encapsulated access rules in `order.auth.ts` before modifying service methods to avoid duplicated logic.
+3. **Repository & Service Layer**: Integrated collaborator queries and scoped order listing in `OrderRepository` and `OrderService`.
+4. **Backend Automated Tests**: Created 27 comprehensive tests in `tests/collaborators.test.ts` validating all collaborator permutations and security edge cases.
+5. **Frontend Services & UI**: Extended API client and built badges, expanded collaborator tags, and assignment dialogs in `OrderList.tsx`.
+6. **Frontend Integration Tests**: Validated UI rendering, badges, modal interactions, and permissions in `client/tests/Collaborators.test.tsx`.
 
 ---
 
 ## 3. Estimated vs. Actual Time
-- **State Machine & Validators**: Estimated 25m, took ~15m.
-- **Backend Service, Repository & Routes**: Estimated 40m, took ~30m.
-- **Backend Test Suite (9 new cases)**: Estimated 30m, took ~20m.
-- **Frontend Lifecycle UI & Modals**: Estimated 45m, took ~35m.
-- **Frontend Test Suite (4 cases)**: Estimated 25m, took ~20m.
+- **Database Migration & Types**: Estimated 20m, took ~15m.
+- **Backend Service, Repository & Auth**: Estimated 45m, took ~35m.
+- **Backend Test Suite (27 test cases)**: Estimated 40m, took ~30m.
+- **Frontend UI & Modal**: Estimated 45m, took ~35m.
+- **Frontend Test Suite (4 test cases)**: Estimated 25m, took ~20m.
 - **Documentation & Verification**: Estimated 20m, took ~15m.
 
 ---
 
 ## 4. What Was Cut or Deferred
-- **Collaborator assignments** and multi-waiter editing permissions were deferred to Phase 6.
-- **Full-text search, server pagination, and date range filters** were deferred to Phase 7.
-- **Audit/history timeline and slow-order alerts** were deferred to Phase 8 and Phase 9.
+- **Advanced search/filter/sort and server-side pagination** were deferred to Phase 7.
+- **Bulk menu actions and daily CSV export** were deferred to Phase 7.
+- **Dashboard analytics and audit/history timeline** were deferred to Phase 8.
+- **Slow-order alerts** were deferred to Phase 9.
+

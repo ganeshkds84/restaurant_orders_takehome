@@ -21,6 +21,19 @@ export interface OrderLine {
   updatedAt: string;
 }
 
+export interface OrderCollaborator {
+  id: string;
+  orderId: string;
+  userId: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  };
+  createdAt: string;
+}
+
 export interface Order {
   id: string;
   tableNumber: string;
@@ -30,6 +43,7 @@ export interface Order {
     name: string;
     email: string;
   };
+  collaborators?: OrderCollaborator[];
   status: OrderStatus;
   isArchived: boolean;
   totalPrice: number;
@@ -37,6 +51,7 @@ export interface Order {
   updatedAt: string;
   lines: OrderLine[];
 }
+
 
 export interface CreateOrderItemPayload {
   menuItemId: string;

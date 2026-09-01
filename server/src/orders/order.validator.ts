@@ -62,3 +62,10 @@ export const voidOrderLineSchema = z.object({
 
 export const addOrderLineSchema = createOrderItemSchema;
 
+export const addCollaboratorSchema = z.object({
+  userId: z
+    .string({ required_error: 'User ID is required' })
+    .regex(uuidRegex, 'User ID must be a valid UUID'),
+});
+
+

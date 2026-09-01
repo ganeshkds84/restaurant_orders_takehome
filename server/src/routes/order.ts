@@ -9,6 +9,7 @@ import {
   cancelOrderSchema,
   addOrderLineSchema,
   voidOrderLineSchema,
+  addCollaboratorSchema,
 } from '../orders/order.validator.js';
 import { AppError } from '../errors/app-error.js';
 
@@ -19,6 +20,34 @@ const orderService = new OrderService();
  * All order routes require valid authentication
  */
 router.use(authenticate);
+
+/**
+ * GET /api/orders/eligible-waiters
+ * List all waiters eligible to be added as collaborators
+ */
+router.get(
+  '/eligible-waiters',
+  requireStaff,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      const waiters = await orderService.getEligibleWaiters(req.user);
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          waiters,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 
 /**
  * POST /api/orders
@@ -291,5 +320,107 @@ router.patch(
   }
 );
 
+/**
+ * GET /api/orders/:id/collaborators
+ * List all collaborators assigned to the order
+ */
+router.get(
+  '/:id/collaborators',
+  requireStaff,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      const collaborators = await orderService.getCollaborators(req.user, orderId);
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          collaborators,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/orders/:id/collaborators
+ * Assign a waiter as a collaborator on an order
+ */
+router.post(
+  '/:id/collaborators',
+  requireStaff,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const targetUserId = req.body.userId || req.body.waiterId;
+
+      const parseResult = addCollaboratorSchema.safeParse({ userId: targetUserId });
+      if (!parseResult.success) {
+        throw AppError.badRequest(
+          'Validation failed',
+          parseResult.error.flatten().fieldErrors
+        );
+      }
+
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      const collaborator = await orderService.addCollaborator(
+        req.user,
+        orderId,
+        parseResult.data.userId
+      );
+
+      res.status(201).json({
+        status: 'success',
+        message: 'Collaborator added to order successfully',
+        data: {
+          collaborator,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * DELETE /api/orders/:id/collaborators/:userId
+ * Remove a collaborator from an order
+ */
+router.delete(
+  '/:id/collaborators/:userId',
+  requireStaff,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const orderId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const targetUserId = Array.isArray(req.params.userId)
+        ? req.params.userId[0]
+        : req.params.userId;
+
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      await orderService.removeCollaborator(req.user, orderId, targetUserId);
+
+      res.status(200).json({
+        status: 'success',
+        message: 'Collaborator removed from order successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export const orderRouter = router;
+
 

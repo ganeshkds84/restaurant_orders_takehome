@@ -164,3 +164,85 @@ export async function addOrderLineApi(
   return body.data.order;
 }
 
+export async function fetchEligibleWaitersApi(
+  token: string
+): Promise<Array<{ id: string; name: string; email: string; role: string }>> {
+  const response = await fetch(`${API_BASE}/orders/eligible-waiters`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const body = (await response.json()) as ApiResponse<{
+    waiters: Array<{ id: string; name: string; email: string; role: string }>;
+  }>;
+  if (!response.ok || body.status !== 'success' || !body.data?.waiters) {
+    throw new Error(body.message || 'Failed to fetch eligible waiters');
+  }
+
+  return body.data.waiters;
+}
+
+export async function fetchCollaboratorsApi(
+  token: string,
+  orderId: string
+): Promise<Array<{ id: string; orderId: string; userId: string; user?: { id: string; name: string; email: string; role: string }; createdAt: string }>> {
+  const response = await fetch(`${API_BASE}/orders/${orderId}/collaborators`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const body = (await response.json()) as ApiResponse<{
+    collaborators: Array<{ id: string; orderId: string; userId: string; user?: { id: string; name: string; email: string; role: string }; createdAt: string }>;
+  }>;
+  if (!response.ok || body.status !== 'success' || !body.data?.collaborators) {
+    throw new Error(body.message || 'Failed to fetch collaborators');
+  }
+
+  return body.data.collaborators;
+}
+
+export async function addCollaboratorApi(
+  token: string,
+  orderId: string,
+  userId: string
+): Promise<{ id: string; orderId: string; userId: string }> {
+  const response = await fetch(`${API_BASE}/orders/${orderId}/collaborators`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ userId }),
+  });
+
+  const body = (await response.json()) as ApiResponse<{
+    collaborator: { id: string; orderId: string; userId: string };
+  }>;
+  if (!response.ok || body.status !== 'success' || !body.data?.collaborator) {
+    throw new Error(body.message || 'Failed to add collaborator');
+  }
+
+  return body.data.collaborator;
+}
+
+export async function removeCollaboratorApi(
+  token: string,
+  orderId: string,
+  userId: string
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/orders/${orderId}/collaborators/${userId}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const body = (await response.json()) as ApiResponse<Record<string, unknown>>;
+  if (!response.ok || body.status !== 'success') {
+    throw new Error(body.message || 'Failed to remove collaborator');
+  }
+}
+
+

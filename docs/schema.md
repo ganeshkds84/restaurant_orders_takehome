@@ -104,10 +104,29 @@ Persists individual line items for an order, with historical price snapshots and
 
 ---
 
+### 6. `order_collaborators`
+Persists many-to-many collaborator assignments linking orders to collaborating waiters.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | UUID | PRIMARY KEY DEFAULT `gen_random_uuid()` | Unique collaborator assignment identifier |
+| `order_id` | UUID | NOT NULL, REFERENCES `orders(id)` ON DELETE CASCADE | Target order foreign key |
+| `user_id` | UUID | NOT NULL, REFERENCES `users(id)` ON DELETE CASCADE | Collaborating waiter user foreign key |
+| `created_at` | TIMESTAMPTZ | NOT NULL DEFAULT NOW() | Assignment creation timestamp |
+
+**Constraints & Indexes**:
+- `uq_order_collaborators_order_user`: Unique constraint on `(order_id, user_id)` preventing duplicate assignments.
+- `idx_order_collaborators_order_id`: B-Tree index on `order_id` for quick lookup of all collaborators on an order.
+- `idx_order_collaborators_user_id`: B-Tree index on `user_id` for fast query scoping of orders a waiter is collaborating on.
+
+---
+
 ## Relationships
 - `users` $\xrightarrow{1:N}$ `orders`: One primary waiter creates many orders (`orders.primary_waiter_id` $\to$ `users.id`).
 - `orders` $\xrightarrow{1:N}$ `order_lines`: One order has one or more order lines (`order_lines.order_id` $\to$ `orders.id`, cascading on delete).
 - `menu_items` $\xrightarrow{1:N}$ `order_lines`: One menu item is referenced by order lines across historical tickets (`order_lines.menu_item_id` $\to$ `menu_items.id`, restricted on delete).
+- `orders` $\xleftrightarrow{M:N}$ `users` (via `order_collaborators`): One order can have multiple collaborating waiters; one waiter can collaborate on multiple orders.
+
 
 ---
 

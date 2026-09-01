@@ -19,6 +19,29 @@ export interface DbOrder {
   primary_waiter_email?: string;
 }
 
+export interface DbOrderCollaborator {
+  id: string;
+  order_id: string;
+  user_id: string;
+  created_at: Date | string;
+  user_name?: string;
+  user_email?: string;
+  user_role?: string;
+}
+
+export interface OrderCollaborator {
+  id: string;
+  orderId: string;
+  userId: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  };
+  createdAt: string;
+}
+
 export interface DbOrderLine {
   id: string;
   order_id: string;
@@ -57,6 +80,7 @@ export interface Order {
     name: string;
     email: string;
   };
+  collaborators?: OrderCollaborator[];
   status: OrderStatus;
   isArchived: boolean;
   totalPrice: number;
@@ -66,6 +90,7 @@ export interface Order {
 
 export interface OrderWithLines extends Order {
   lines: OrderLine[];
+  collaborators: OrderCollaborator[];
 }
 
 export interface CreateOrderItemInput {
@@ -81,6 +106,7 @@ export interface CreateOrderInput {
 
 export interface OrderQueryFilters {
   primaryWaiterId?: string;
+  waiterId?: string; // Query orders where user is primary waiter OR collaborator
   status?: OrderStatus;
   isArchived?: boolean;
   tableNumber?: string;
@@ -104,3 +130,8 @@ export interface AddOrderLineInput {
   quantity: number;
   specialInstructions?: string;
 }
+
+export interface AddCollaboratorInput {
+  userId: string;
+}
+

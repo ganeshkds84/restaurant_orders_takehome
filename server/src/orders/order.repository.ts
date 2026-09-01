@@ -2,14 +2,17 @@ import { dbPool } from '../db/connection.js';
 import {
   DbOrder,
   DbOrderLine,
+  DbOrderCollaborator,
   Order,
   OrderLine,
+  OrderCollaborator,
   OrderWithLines,
   OrderQueryFilters,
   OrderStatus,
 } from '../types/order.js';
 import { logger } from '../logging/logger.js';
 import crypto from 'crypto';
+
 
 export function mapToOrderLine(dbLine: DbOrderLine): OrderLine {
   const unitPrice =
@@ -40,7 +43,31 @@ export function mapToOrderLine(dbLine: DbOrderLine): OrderLine {
   };
 }
 
-export function mapToOrder(dbOrder: DbOrder, lines: OrderLine[] = []): OrderWithLines {
+export function mapToOrderCollaborator(dbCollab: DbOrderCollaborator): OrderCollaborator {
+  return {
+    id: dbCollab.id,
+    orderId: dbCollab.order_id,
+    userId: dbCollab.user_id,
+    user: dbCollab.user_name
+      ? {
+          id: dbCollab.user_id,
+          name: dbCollab.user_name,
+          email: dbCollab.user_email || '',
+          role: dbCollab.user_role || 'waiter',
+        }
+      : undefined,
+    createdAt:
+      dbCollab.created_at instanceof Date
+        ? dbCollab.created_at.toISOString()
+        : String(dbCollab.created_at),
+  };
+}
+
+export function mapToOrder(
+  dbOrder: DbOrder,
+  lines: OrderLine[] = [],
+  collaborators: OrderCollaborator[] = []
+): OrderWithLines {
   const totalPrice =
     typeof dbOrder.total_price === 'number'
       ? dbOrder.total_price
@@ -57,6 +84,7 @@ export function mapToOrder(dbOrder: DbOrder, lines: OrderLine[] = []): OrderWith
           email: dbOrder.primary_waiter_email || '',
         }
       : undefined,
+    collaborators,
     status: dbOrder.status,
     isArchived: dbOrder.is_archived,
     totalPrice: Math.round(totalPrice * 100) / 100,
@@ -75,6 +103,8 @@ export function mapToOrder(dbOrder: DbOrder, lines: OrderLine[] = []): OrderWith
 // In-memory storage for database-offline / test scenarios
 const memoryOrders: Map<string, DbOrder> = new Map();
 const memoryOrderLines: Map<string, DbOrderLine> = new Map();
+const memoryOrderCollaborators: Map<string, DbOrderCollaborator> = new Map();
+
 
 function isConnectionError(err: unknown): boolean {
   if (!err) return false;
@@ -255,8 +285,19 @@ export class OrderRepository {
       `;
       const { rows: lineRows } = await dbPool.query(linesQuery, [orderId]);
 
+      const collabsQuery = `
+        SELECT oc.id, oc.order_id, oc.user_id, oc.created_at,
+               u.name AS user_name, u.email AS user_email, u.role AS user_role
+        FROM order_collaborators oc
+        LEFT JOIN users u ON oc.user_id = u.id
+        WHERE oc.order_id = $1
+        ORDER BY oc.created_at ASC
+      `;
+      const { rows: collabRows } = await dbPool.query(collabsQuery, [orderId]);
+
       const mappedLines = (lineRows as DbOrderLine[]).map(mapToOrderLine);
-      return mapToOrder(orderRows[0] as DbOrder, mappedLines);
+      const mappedCollabs = (collabRows as DbOrderCollaborator[]).map(mapToOrderCollaborator);
+      return mapToOrder(orderRows[0] as DbOrder, mappedLines, mappedCollabs);
     } catch (err) {
       if (isConnectionError(err)) {
         logger.debug('PostgreSQL unavailable; searching order in memory');
@@ -271,8 +312,17 @@ export class OrderRepository {
         }
         lines.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
+        const collabs: DbOrderCollaborator[] = [];
+        for (const col of memoryOrderCollaborators.values()) {
+          if (col.order_id === orderId) {
+            collabs.push(col);
+          }
+        }
+        collabs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
         const mappedLines = lines.map(mapToOrderLine);
-        return mapToOrder(dbOrder, mappedLines);
+        const mappedCollabs = collabs.map(mapToOrderCollaborator);
+        return mapToOrder(dbOrder, mappedLines, mappedCollabs);
       }
       throw err;
     }
@@ -286,6 +336,12 @@ export class OrderRepository {
       if (filters.primaryWaiterId) {
         values.push(filters.primaryWaiterId);
         conditions.push(`o.primary_waiter_id = $${values.length}`);
+      }
+
+      if (filters.waiterId) {
+        values.push(filters.waiterId);
+        const p1 = values.length;
+        conditions.push(`(o.primary_waiter_id = $${p1} OR o.id IN (SELECT order_id FROM order_collaborators WHERE user_id = $${p1}))`);
       }
 
       if (filters.status) {
@@ -325,6 +381,16 @@ export class OrderRepository {
       `;
       const { rows: lineRows } = await dbPool.query(linesQuery, [orderIds]);
 
+      const collabsQuery = `
+        SELECT oc.id, oc.order_id, oc.user_id, oc.created_at,
+               u.name AS user_name, u.email AS user_email, u.role AS user_role
+        FROM order_collaborators oc
+        LEFT JOIN users u ON oc.user_id = u.id
+        WHERE oc.order_id = ANY($1::uuid[])
+        ORDER BY oc.created_at ASC
+      `;
+      const { rows: collabRows } = await dbPool.query(collabsQuery, [orderIds]);
+
       const linesByOrderId = new Map<string, OrderLine[]>();
       for (const line of lineRows as DbOrderLine[]) {
         const mapped = mapToOrderLine(line);
@@ -333,8 +399,20 @@ export class OrderRepository {
         linesByOrderId.set(mapped.orderId, list);
       }
 
+      const collabsByOrderId = new Map<string, OrderCollaborator[]>();
+      for (const col of collabRows as DbOrderCollaborator[]) {
+        const mapped = mapToOrderCollaborator(col);
+        const list = collabsByOrderId.get(mapped.orderId) || [];
+        list.push(mapped);
+        collabsByOrderId.set(mapped.orderId, list);
+      }
+
       return (orderRows as DbOrder[]).map((order) =>
-        mapToOrder(order, linesByOrderId.get(order.id) || [])
+        mapToOrder(
+          order,
+          linesByOrderId.get(order.id) || [],
+          collabsByOrderId.get(order.id) || []
+        )
       );
     } catch (err) {
       if (isConnectionError(err)) {
@@ -343,6 +421,17 @@ export class OrderRepository {
 
         if (filters.primaryWaiterId) {
           orders = orders.filter((o) => o.primary_waiter_id === filters.primaryWaiterId);
+        }
+        if (filters.waiterId) {
+          orders = orders.filter((o) => {
+            if (o.primary_waiter_id === filters.waiterId) return true;
+            for (const col of memoryOrderCollaborators.values()) {
+              if (col.order_id === o.id && col.user_id === filters.waiterId) {
+                return true;
+              }
+            }
+            return false;
+          });
         }
         if (filters.status) {
           orders = orders.filter((o) => o.status === filters.status);
@@ -366,7 +455,15 @@ export class OrderRepository {
               (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
             )
             .map(mapToOrderLine);
-          return mapToOrder(order, lines);
+
+          const collabs = Array.from(memoryOrderCollaborators.values())
+            .filter((c) => c.order_id === order.id)
+            .sort(
+              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            )
+            .map(mapToOrderCollaborator);
+
+          return mapToOrder(order, lines, collabs);
         });
       }
       throw err;
@@ -552,9 +649,140 @@ export class OrderRepository {
     }
   }
 
+  async addCollaborator(
+    orderId: string,
+    userId: string,
+    userData?: { name: string; email: string; role: string }
+  ): Promise<OrderCollaborator> {
+    try {
+      const insertQuery = `
+        INSERT INTO order_collaborators (order_id, user_id)
+        VALUES ($1, $2)
+        RETURNING id, order_id, user_id, created_at
+      `;
+      const { rows } = await dbPool.query(insertQuery, [orderId, userId]);
+      const created = rows[0] as DbOrderCollaborator;
+
+      if (userData) {
+        created.user_name = userData.name;
+        created.user_email = userData.email;
+        created.user_role = userData.role;
+      } else {
+        const uRes = await dbPool.query('SELECT name, email, role FROM users WHERE id = $1', [userId]);
+        if (uRes.rows.length > 0) {
+          created.user_name = uRes.rows[0].name;
+          created.user_email = uRes.rows[0].email;
+          created.user_role = uRes.rows[0].role;
+        }
+      }
+      return mapToOrderCollaborator(created);
+    } catch (err) {
+      if (isConnectionError(err)) {
+        logger.debug('PostgreSQL unavailable; adding collaborator in memory');
+        // Check uniqueness in memory
+        for (const col of memoryOrderCollaborators.values()) {
+          if (col.order_id === orderId && col.user_id === userId) {
+            const dupErr = new Error('duplicate key value violates unique constraint') as Error & { code: string };
+            dupErr.code = '23505';
+            throw dupErr;
+          }
+        }
+        const collabId = crypto.randomUUID();
+        const now = new Date();
+        const dbCol: DbOrderCollaborator = {
+          id: collabId,
+          order_id: orderId,
+          user_id: userId,
+          created_at: now,
+          user_name: userData?.name,
+          user_email: userData?.email,
+          user_role: userData?.role,
+        };
+        memoryOrderCollaborators.set(collabId, dbCol);
+        return mapToOrderCollaborator(dbCol);
+      }
+      throw err;
+    }
+  }
+
+  async removeCollaborator(orderId: string, userId: string): Promise<boolean> {
+    try {
+      const deleteQuery = `
+        DELETE FROM order_collaborators
+        WHERE order_id = $1 AND user_id = $2
+        RETURNING id
+      `;
+      const { rows } = await dbPool.query(deleteQuery, [orderId, userId]);
+      return rows.length > 0;
+    } catch (err) {
+      if (isConnectionError(err)) {
+        logger.debug('PostgreSQL unavailable; removing collaborator in memory');
+        for (const [id, col] of memoryOrderCollaborators.entries()) {
+          if (col.order_id === orderId && col.user_id === userId) {
+            memoryOrderCollaborators.delete(id);
+            return true;
+          }
+        }
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  async getCollaborators(orderId: string): Promise<OrderCollaborator[]> {
+    try {
+      const query = `
+        SELECT oc.id, oc.order_id, oc.user_id, oc.created_at,
+               u.name AS user_name, u.email AS user_email, u.role AS user_role
+        FROM order_collaborators oc
+        LEFT JOIN users u ON oc.user_id = u.id
+        WHERE oc.order_id = $1
+        ORDER BY oc.created_at ASC
+      `;
+      const { rows } = await dbPool.query(query, [orderId]);
+      return (rows as DbOrderCollaborator[]).map(mapToOrderCollaborator);
+    } catch (err) {
+      if (isConnectionError(err)) {
+        logger.debug('PostgreSQL unavailable; getting collaborators in memory');
+        const collabs: DbOrderCollaborator[] = [];
+        for (const col of memoryOrderCollaborators.values()) {
+          if (col.order_id === orderId) {
+            collabs.push(col);
+          }
+        }
+        collabs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        return collabs.map(mapToOrderCollaborator);
+      }
+      throw err;
+    }
+  }
+
+  async isCollaborator(orderId: string, userId: string): Promise<boolean> {
+    try {
+      const query = `
+        SELECT 1 FROM order_collaborators
+        WHERE order_id = $1 AND user_id = $2
+        LIMIT 1
+      `;
+      const { rows } = await dbPool.query(query, [orderId, userId]);
+      return rows.length > 0;
+    } catch (err) {
+      if (isConnectionError(err)) {
+        for (const col of memoryOrderCollaborators.values()) {
+          if (col.order_id === orderId && col.user_id === userId) {
+            return true;
+          }
+        }
+        return false;
+      }
+      throw err;
+    }
+  }
+
   resetMemoryStore(): void {
     memoryOrders.clear();
     memoryOrderLines.clear();
+    memoryOrderCollaborators.clear();
   }
 
   // Testing helper for clean in-memory state
@@ -564,3 +792,4 @@ export class OrderRepository {
 }
 
 export const orderRepository = new OrderRepository();
+

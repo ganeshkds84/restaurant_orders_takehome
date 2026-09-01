@@ -33,7 +33,7 @@ The application is structured into decoupled frontend, backend, and data tiers:
 
 - **Frontend (Client)**: React 18 single-page application built with Vite and TypeScript. Manages client-side authentication state via `AuthContext`, stores JWT token in `localStorage`, provides interactive order ticket creation (`OrderCreation`) and order queue retrieval (`OrderList`), along with live menu catalog & management interface (`MenuManagement`).
 - **Backend (Server)**: Node.js + Express API in TypeScript. Provides input validation (Zod schemas), centralized error handling (`AppError`), atomic PostgreSQL transactions (`BEGIN...COMMIT/ROLLBACK`), historical price snapshotting on line item creation, JWT verification, and server-side RBAC scoping (`requireRole`, `requireManager`, `requireStaff`).
-- **Database (PostgreSQL)**: Relational schema modeling users, menu items, orders, and order lines with foreign key constraints (`ON DELETE CASCADE` / `RESTRICT`), check constraints (`quantity > 0`, `price >= 0`), and indexes for frequent lookups.
+- **Database (PostgreSQL)**: Relational schema modeling users, menu items, orders, order lines, and order collaborators (`order_collaborators`) with foreign key constraints (`ON DELETE CASCADE` / `RESTRICT`), check constraints (`quantity > 0`, `price >= 0`), uniqueness constraints (`uq_order_collaborators_order_user`), and indexes for frequent lookups.
 
 ---
 
@@ -44,7 +44,7 @@ The application is structured into decoupled frontend, backend, and data tiers:
 
 ---
 
-## 3. End-to-End Request Path: Order Creation & Lifecycle Progression
+## 3. End-to-End Request Path: Order Collaboration & Access
 
 ### A. Order Creation (`POST /api/orders`)
 1. **Client**: The waiter enters table number "Table 14", selects dishes with quantities, adds special instructions ("Extra crispy"), and clicks "Send Order to Kitchen". Browser sends `POST /api/orders` with authorization header and JSON payload containing `tableNumber` and `items: [{ menuItemId, quantity, specialInstructions }]`.
@@ -68,31 +68,37 @@ The application is structured into decoupled frontend, backend, and data tiers:
    - Inserts row into `orders` with server-derived `primary_waiter_id` and initial status `'placed'`.
    - Inserts each row into `order_lines` with historical `unit_price`, `item_name`, and `special_instructions`.
    - Issues `COMMIT` if all rows succeed, or `ROLLBACK` on any error (guaranteeing zero partial orders).
-8. **Response / Serialization**: Mapped order with order lines and authoritative total returned with HTTP 201 `{ status: 'success', data: { order } }`.
+8. **Response / Serialization**: Mapped order with order lines, primary waiter info, empty collaborators array, and authoritative total returned with HTTP 201 `{ status: 'success', data: { order } }`.
 
-### B. Order Lifecycle Transition (`PATCH /api/orders/:id/status`)
-1. **Client**: Waiter clicks "Accept Order" or "Start Preparing". Client sends `PATCH /api/orders/:id/status` with payload `{ "status": "accepted" }`.
-2. **Authentication & RBAC**: `authenticate` resolves caller; waiter identity verified against `order.primary_waiter_id` (managers can transition any order).
-3. **State Machine Validation (`order.state-machine.ts`)**:
-   - Evaluates legal transitions: `placed` $\to$ `accepted` $\to$ `preparing` $\to$ `ready` $\to$ `served`.
-   - Blocks illegal state skipping, backward transitions, and terminal modifications (`served`/`cancelled`).
-4. **Optimistic Concurrency & Persistence**:
-   - Executes atomic SQL conditional update: `UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 AND status = $3`.
-   - Guarantees race safety if multiple staff members transition status simultaneously.
+### B. Adding a Collaborator (`POST /api/orders/:id/collaborators`)
+1. **Client**: Primary waiter or manager opens "Add Collaborator" modal, selects a waiter from the eligible waitstaff list, and clicks "Assign Collaborator". Client sends `POST /api/orders/:id/collaborators` with `{ "userId": "<target_waiter_uuid>" }`.
+2. **Authentication & Authorization (`order.auth.ts`)**:
+   - `authenticate` resolves caller.
+   - `canManageCollaborators(user, order)` checks that caller is either the `primary_waiter_id` or has role `'manager'`. If caller is an unassigned waiter or a secondary collaborator, server rejects with `403 Forbidden`.
+3. **Business Validation**:
+   - Verifies target user exists in database and holds role `'waiter'`.
+   - Verifies target user is not already the primary waiter on this order.
+   - Verifies target user is not already assigned as a collaborator on this order.
+4. **Persistence**:
+   - Inserts row into `order_collaborators (order_id, user_id)` protected by database `UNIQUE(order_id, user_id)` constraint.
+5. **Response**: Returns 201 Created with sanitized collaborator record (`id`, `orderId`, `userId`, `user: { id, name, email, role }`, `createdAt`).
 
-### C. Order Line Voiding (`PATCH /api/orders/:id/lines/:lineId/void`)
-1. **Client**: Staff submits void modal with non-empty `reason` string (e.g., "Customer allergic to mushroom").
-2. **Business Rule Enforcement**:
-   - Validates that order is open (in `placed`, `accepted`, `preparing`, or `ready`).
-   - Verifies that `reason` is non-empty and line is not already voided.
-3. **Persistence & Authoritative Recalculation**:
-   - Inside a database transaction, marks `order_lines.is_voided = TRUE`, stores `void_reason`, and updates `orders.total_price` to sum only remaining active lines.
-   - Historical unit price remains persisted on the voided line.
+### C. Collaborator Order Access & Lifecycle Operations
+1. **Order Listing (`GET /api/orders`)**:
+   - When a waiter queries the orders endpoint, the query is scoped with `(o.primary_waiter_id = $userId OR o.id IN (SELECT order_id FROM order_collaborators WHERE user_id = $userId))`.
+   - The waiter sees all orders they created (as primary waiter) PLUS all orders where they are an assigned collaborator.
+2. **Order Actions (`status`, `cancel`, `lines`, `void`)**:
+   - Authorized collaborators can transition status (`PATCH /api/orders/:id/status`), cancel while placed/accepted (`POST /api/orders/:id/cancel`), add line items (`POST /api/orders/:id/lines`), and void lines (`PATCH /api/orders/:id/lines/:lineId/void`).
+   - Unassigned waiters are rejected with `403 Forbidden`.
+3. **Collaborator Removal (`DELETE /api/orders/:id/collaborators/:userId`)**:
+   - When removed by the primary waiter or manager, the collaborator junction row is deleted, and their access to view or modify the order is revoked immediately.
 
 ---
 
-## 4. What We Decided *Not* to Build in Phase 5
-- **No Collaborators Management Yet**: Adding secondary waiters/collaborators to orders is scheduled for Phase 6.
-- **No Advanced Search/Filter/Pagination Yet**: Full server-side pagination, date range filtering, and waiter multi-select are scheduled for Phase 7.
-- **No Audit/History Timeline Yet**: Immutable event logging is scheduled for Phase 8.
-- **No Slow-Order Alerts Yet**: Background threshold alerting is scheduled for Phase 9.
+## 4. What We Decided *Not* to Build in Phase 6
+- **No Advanced Search/Filter/Sort/Pagination Yet**: Full server-side table search, status/waiter/date filters, multi-column sorting, and pagination metadata are scheduled for Phase 7.
+- **No Bulk Actions or CSV Export Yet**: Bulk menu item changes and daily CSV order export are scheduled for Phase 7.
+- **No Dashboard Analytics Yet**: Landing metrics and 14-day served charts are scheduled for Phase 8.
+- **No Immutable Audit/History Timeline Yet**: Audit event tracking is scheduled for Phase 8.
+- **No Slow-Order Alerts Yet**: Background threshold alerts and alert acknowledgement are scheduled for Phase 9.
+
