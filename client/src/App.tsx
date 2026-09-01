@@ -6,12 +6,13 @@ import { SessionDashboard } from './components/SessionDashboard';
 import { MenuManagement } from './components/MenuManagement';
 import { OrderCreation } from './components/OrderCreation';
 import { OrderList } from './components/OrderList';
+import { DashboardView } from './components/DashboardView';
 import { HealthStatus } from './components/HealthStatus';
-import { UtensilsCrossed, ShieldCheck, ShoppingBag, Receipt } from 'lucide-react';
+import { UtensilsCrossed, ShieldCheck, ShoppingBag, Receipt, LayoutDashboard } from 'lucide-react';
 
 const MainContent: React.FC = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'menu' | 'create-order' | 'orders' | 'rbac'>('menu');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'menu' | 'create-order' | 'orders' | 'rbac'>('menu');
 
   if (isLoading) {
     return (
@@ -82,6 +83,30 @@ const MainContent: React.FC = () => {
               overflowX: 'auto',
             }}
           >
+            <button
+              id="tab-dashboard"
+              data-testid="tab-dashboard"
+              onClick={() => setActiveTab('dashboard')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.6rem 1.2rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.9375rem',
+                fontWeight: activeTab === 'dashboard' ? 600 : 400,
+                backgroundColor: activeTab === 'dashboard' ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                color: activeTab === 'dashboard' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                border: activeTab === 'dashboard' ? '1px solid var(--border-focus)' : '1px solid transparent',
+                cursor: 'pointer',
+                transition: 'var(--transition-fast)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <LayoutDashboard size={18} color={activeTab === 'dashboard' ? 'var(--accent-primary)' : 'currentColor'} />
+              <span>Dashboard</span>
+            </button>
+
             <button
               id="tab-create-order"
               data-testid="tab-create-order"
@@ -180,6 +205,7 @@ const MainContent: React.FC = () => {
           </div>
 
           {/* Active Tab Content */}
+          {activeTab === 'dashboard' && <DashboardView />}
           {activeTab === 'create-order' && <OrderCreation onOrderCreated={() => {}} />}
           {activeTab === 'orders' && <OrderList />}
           {activeTab === 'menu' && <MenuManagement />}

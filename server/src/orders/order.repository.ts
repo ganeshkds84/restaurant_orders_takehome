@@ -924,6 +924,18 @@ export class OrderRepository {
     }
   }
 
+  getAllOrdersForMemory(): DbOrder[] {
+    return Array.from(memoryOrders.values());
+  }
+
+  getAllOrderLinesForMemory(): DbOrderLine[] {
+    return Array.from(memoryOrderLines.values());
+  }
+
+  getAllCollaboratorsForMemory(): DbOrderCollaborator[] {
+    return Array.from(memoryOrderCollaborators.values());
+  }
+
   resetMemoryStore(): void {
     memoryOrders.clear();
     memoryOrderLines.clear();

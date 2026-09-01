@@ -122,5 +122,12 @@ Log of decisions that shaped this codebase — where a real alternative existed 
 - **Rejected:** Exporting JSON files or performing client-side DOM table scraping.
 - **Why:** CSV is the industry standard for accounting, Excel imports, and restaurant operational analysis. Server-side RFC 4180 streaming guarantees correct quoting of item names with commas or quotes, handles multi-line orders accurately, and works seamlessly across devices without browser memory constraints.
 
+---
+
+## Decision 18: Server-Authoritative Dashboard Aggregations & 14-Day Calendar Time-Bucketing
+- **Chose:** Aggregating headline throughput numbers (`openOrders`, `ordersPlacedToday`, `ordersServedToday`, `revenueToday`), status breakdowns, waiter performance, and 14-day history series strictly on the server with PostgreSQL date series generation (`generate_series(0, 13)`) and zero-filling.
+- **Rejected:** Fetching all order records over the wire and computing business metrics in client-side React state.
+- **Why:** Authoritative metrics must never rely on client calculation or expose entire unpaginated order datasets to client inspection. Generating explicit 14-day calendar buckets on the server ensures zero-filled entries for days without sales, handles timezone boundaries deterministically, and provides instant O(1) response payloads for landing views.
+
 
 

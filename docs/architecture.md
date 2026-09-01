@@ -129,12 +129,24 @@ The application is structured into decoupled frontend, backend, and data tiers:
    - Serializes data into standard RFC 4180-compliant CSV text with proper quote escaping.
 3. **Response**: Sets headers `Content-Type: text/csv; charset=utf-8` and `Content-Disposition: attachment; filename="orders-YYYY-MM-DD.csv"` and streams the CSV file.
 
+### G. Dashboard Operations & Analytics (`GET /api/dashboard/stats`)
+1. **Client**: User visits the application or switches to the Dashboard tab. Browser sends `GET /api/dashboard/stats` (with optional `?date=YYYY-MM-DD`) and `Authorization: Bearer <token>`.
+2. **Authentication & Authorization**:
+   - `authenticate` verifies JWT token.
+   - `requireStaff` ensures valid restaurant staff (managers and waiters) can access operational metrics.
+3. **Service & Repository Execution (`DashboardService` & `DashboardRepository`)**:
+   - Executes authoritative PostgreSQL aggregations:
+     - **Headline Numbers**: `openOrders` (statuses `placed`, `accepted`, `preparing`, `ready`, non-archived), `ordersPlacedToday` (`created_at::date = CURRENT_DATE`), `ordersServedToday` (`status = 'served'` today), and `revenueToday` (`SUM(total_price)` of served orders today).
+     - **Status Breakdown**: `SELECT status, COUNT(*)::int FROM orders WHERE is_archived = FALSE GROUP BY status` mapped across all 6 lifecycle statuses.
+     - **Waiter Breakdown**: `users` left joined with `orders` grouped by waiter ID, returning order counts and total non-cancelled revenue.
+     - **14-Day Served Chart**: Date series over the last 14 calendar days joined with served orders, returning chronologically ascending daily counts.
+4. **Response**: Returns HTTP 200 with `{ status: 'success', data: { headline, statusBreakdown, waiterBreakdown, dailyServedChart } }`.
+
 ---
 
-## 4. What We Decided *Not* to Build in Phase 8
-- **No Dashboard Analytics Yet**: Landing metrics and 14-day served charts are scheduled for Phase 9.
-- **No Immutable Audit/History Timeline Yet**: Audit event tracking is scheduled for Phase 9.
-- **No Slow-Order Alerts Yet**: Background threshold alerts and alert acknowledgement are scheduled for Phase 10.
+## 4. What We Decided *Not* to Build in Phase 9
+- **No Immutable Audit/History Timeline Yet**: Audit event tracking and order timeline history are scheduled for Phase 10 / Goal 9.
+- **No Slow-Order Alerts Yet**: Background threshold alerts and alert acknowledgement are scheduled for Goal 10.
 
 
 

@@ -262,6 +262,39 @@ Implement ONLY Goal 7 from the ORIGINAL TAKE-HOME ASSIGNMENT SPECIFICATION:
 1. **Validation Boundary for Partial Failures**: Designed bulk schema to accept optional fields at the root level so invalid individual parameters (like negative prices) can be inspected per-item in `MenuService` and returned with specific failure reasons rather than causing a 400 rejection of the entire payload.
 2. **JSDOM Navigation Warning in Test**: Mocked `HTMLAnchorElement.prototype.click` in the frontend CSV export test to ensure clean test execution without JSDOM navigation warnings.
 
+---
+
+## Phase 9 — Operations & Analytics Dashboard (Goal 8)
+
+### Prompt
+```
+# Phase 9 — Operations & Analytics Dashboard
+
+We are continuing the Restaurant Orders take-home assignment.
+Implement ONLY Goal 8 from the ORIGINAL TAKE-HOME ASSIGNMENT SPECIFICATION:
+* 8. A dashboard. A landing view shows headline numbers — open orders, orders placed today, orders served today, and revenue today. It also breaks orders down by status and by waiter, and charts orders served per day over the last fourteen days.
+* Do NOT implement later phases such as audit/history timeline (Goal 9) or slow-order alerts (Goal 10).
+* Do NOT rewrite working architecture from previous phases.
+* Preserve all existing functionality from Phases 1–8.
+* Do NOT commit or push anything.
+* Return a clear walkthrough of exactly what was implemented and the verification results.
+```
+
+### What you got
+- Backend analytics endpoints: `GET /api/dashboard/stats` and `GET /api/dashboard` protected by `requireStaff`.
+- Server-authoritative aggregation repository `DashboardRepository` computing:
+  - Headline numbers: `openOrders` (active non-archived orders), `ordersPlacedToday`, `ordersServedToday`, and `revenueToday` (sum of served order totals).
+  - Status pipeline breakdown across all 6 lifecycle states (`placed`, `accepted`, `preparing`, `ready`, `served`, `cancelled`).
+  - Waiter performance breakdown with order counts and total non-cancelled revenue.
+  - 14-day served orders chart series with chronological ordering and zero-filling.
+- Frontend component `DashboardView.tsx` with responsive headline cards, status distribution bars, 14-day history chart, and waitstaff leaderboard.
+- Added Dashboard navigation tab in `App.tsx`.
+- 10 new backend automated test cases (`tests/dashboard.test.ts`) and 6 new frontend test cases (`tests/Dashboard.test.tsx`), bringing total test suite to 168 passing automated tests (125 backend, 43 frontend).
+
+### What you corrected
+1. **Relative API Base URL in Frontend Service**: Switched from `new URL()` to string concatenation in `client/src/services/dashboard.service.ts` so relative base URLs (e.g. `/api`) work seamlessly in browser and Node/jsdom test environments.
+2. **Backward Compatibility for Tab Default**: Preserved default tab state while making the Dashboard tab prominently available in the navigation bar, ensuring existing Phase 3–8 frontend component tests continue to mount smoothly.
+
 
 
 
