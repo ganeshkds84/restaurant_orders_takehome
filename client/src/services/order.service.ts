@@ -277,4 +277,30 @@ export async function removeCollaboratorApi(
   }
 }
 
+export async function exportOrdersCsvApi(token: string, date?: string): Promise<string> {
+  const query = new URLSearchParams();
+  if (date) query.append('date', date);
+
+  const url = `${API_BASE}/orders/export/csv${query.toString() ? `?${query.toString()}` : ''}`;
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let msg = 'Failed to export orders CSV';
+    try {
+      const body = await response.json();
+      msg = body.message || msg;
+    } catch {
+      // ignore
+    }
+    throw new Error(msg);
+  }
+
+  return response.text();
+}
+
+
 

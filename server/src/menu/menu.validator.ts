@@ -85,3 +85,22 @@ export const menuQuerySchema = z.object({
     .optional()
     .transform((val) => (val !== undefined ? val === 'true' : undefined)),
 });
+
+export const bulkMenuItemSchema = z.object({
+  itemIds: z
+    .array(z.string().trim().min(1, 'Item ID cannot be empty'), {
+      required_error: 'itemIds array is required',
+    })
+    .min(1, 'At least one menu item ID must be provided')
+    .max(100, 'Cannot process more than 100 items at once'),
+  action: z.enum(['update_price', 'update_availability'], {
+    required_error: "Action must be 'update_price' or 'update_availability'",
+  }),
+  price: z
+    .number({ invalid_type_error: 'Price must be a valid number' })
+    .optional(),
+  isAvailable: z
+    .boolean({ invalid_type_error: 'isAvailable must be a boolean' })
+    .optional(),
+});
+

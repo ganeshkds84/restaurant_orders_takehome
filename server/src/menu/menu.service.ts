@@ -4,6 +4,9 @@ import {
   CreateMenuItemInput,
   UpdateMenuItemInput,
   MenuQueryFilters,
+  BulkUpdateMenuItemInput,
+  BulkUpdateResult,
+  BulkItemResult,
 } from '../types/menu.js';
 import { AppError } from '../errors/app-error.js';
 import { logger } from '../logging/logger.js';
@@ -96,6 +99,126 @@ export class MenuService {
     logger.info(`Menu item archive status changed: ${updated.name} -> archived=${isArchived}`);
     return mapToMenuItem(updated);
   }
+
+  /**
+   * Bulk update menu items (price or availability).
+   * Reports per-item status and failure reasons rather than failing the entire batch.
+   */
+  async bulkUpdateMenuItems(input: BulkUpdateMenuItemInput): Promise<BulkUpdateResult> {
+    const { itemIds, action, price, isAvailable } = input;
+    const results: BulkItemResult[] = [];
+
+    // Pre-validate action-specific parameters
+    if (action === 'update_price') {
+      if (price === undefined || typeof price !== 'number') {
+        throw AppError.badRequest('Price must be a valid number when action is update_price');
+      }
+    } else if (action === 'update_availability') {
+      if (isAvailable === undefined || typeof isAvailable !== 'boolean') {
+        throw AppError.badRequest('isAvailable must be a boolean when action is update_availability');
+      }
+    }
+
+    for (const id of itemIds) {
+      try {
+        const existing = await menuRepository.findById(id);
+        if (!existing) {
+          results.push({
+            itemId: id,
+            success: false,
+            error: `Menu item with ID '${id}' not found`,
+          });
+          continue;
+        }
+
+        if (action === 'update_price') {
+          // Negative price check or invalid precision
+          if (price! < 0) {
+            results.push({
+              itemId: id,
+              name: existing.name,
+              success: false,
+              error: `Invalid price ${price}: Price must be non-negative`,
+            });
+            continue;
+          }
+
+          if (Number(price!.toFixed(2)) !== price!) {
+            results.push({
+              itemId: id,
+              name: existing.name,
+              success: false,
+              error: `Invalid price ${price}: Price cannot have more than 2 decimal places`,
+            });
+            continue;
+          }
+
+          const updated = await menuRepository.update(id, { price });
+          if (!updated) {
+            results.push({
+              itemId: id,
+              name: existing.name,
+              success: false,
+              error: 'Failed to update item price in database',
+            });
+            continue;
+          }
+
+          const mapped = mapToMenuItem(updated);
+          results.push({
+            itemId: id,
+            name: existing.name,
+            success: true,
+            message: `Price updated to $${mapped.price.toFixed(2)}`,
+            updatedItem: mapped,
+          });
+        } else if (action === 'update_availability') {
+          const updated = await menuRepository.updateAvailability(id, isAvailable!);
+          if (!updated) {
+            results.push({
+              itemId: id,
+              name: existing.name,
+              success: false,
+              error: 'Failed to update item availability in database',
+            });
+            continue;
+          }
+
+          const mapped = mapToMenuItem(updated);
+          results.push({
+            itemId: id,
+            name: existing.name,
+            success: true,
+            message: `Availability set to ${isAvailable ? 'Available' : 'Unavailable (86ed)'}`,
+            updatedItem: mapped,
+          });
+        }
+      } catch (err) {
+        results.push({
+          itemId: id,
+          success: false,
+          error: err instanceof Error ? err.message : 'Unknown error during update',
+        });
+      }
+    }
+
+    const succeeded = results.filter((r) => r.success).length;
+    const failed = results.length - succeeded;
+
+    logger.info(
+      `Bulk menu update completed for ${itemIds.length} items: action=${action}, succeeded=${succeeded}, failed=${failed}`
+    );
+
+    return {
+      results,
+      summary: {
+        total: results.length,
+        succeeded,
+        failed,
+      },
+    };
+  }
 }
 
 export const menuService = new MenuService();
+

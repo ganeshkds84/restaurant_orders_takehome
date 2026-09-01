@@ -12,9 +12,11 @@ import {
   addCollaboratorSchema,
 } from '../orders/order.validator.js';
 import { AppError } from '../errors/app-error.js';
+import { generateDailyOrdersCsv } from '../orders/order.csv.service.js';
 
 const router = Router();
 const orderService = new OrderService();
+
 
 /**
  * All order routes require valid authentication
@@ -126,6 +128,46 @@ router.get(
     }
   }
 );
+
+/**
+ * GET /api/orders/export/csv
+ * Export day's orders as CSV file attachment (Staff accessible)
+ */
+router.get(
+  '/export/csv',
+  requireStaff,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      // Default date to today's date if not specified
+      const dateStr =
+        typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
+          ? req.query.date
+          : new Date().toISOString().slice(0, 10);
+
+      // Fetch all orders for the requested date
+      const result = await orderService.listOrders(req.user, {
+        date: dateStr,
+        limit: 1000,
+        page: 1,
+        sortBy: 'createdAt',
+        sortOrder: 'asc',
+      });
+
+      const csvContent = generateDailyOrdersCsv(result.orders, dateStr);
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="orders-${dateStr}.csv"`);
+      res.status(200).send(csvContent);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 
 /**
  * GET /api/orders/:id

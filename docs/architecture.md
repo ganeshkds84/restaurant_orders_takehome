@@ -109,12 +109,32 @@ The application is structured into decoupled frontend, backend, and data tiers:
    - Performs batch loading of associated `order_lines` and `order_collaborators` for the paginated slice.
 5. **Response**: Returns HTTP 200 with `{ status: 'success', data: { orders, total, page, limit, totalPages, count } }`.
 
+### E. Bulk Menu Item Operations (`POST /api/menu/bulk`)
+1. **Client**: Manager selects multiple menu items in `MenuManagement`, picks a bulk action (Price update or Availability change), enters inputs, and sends `POST /api/menu/bulk`.
+2. **Authentication & Authorization**:
+   - `authenticate` middleware verifies JWT token.
+   - `requireManager` middleware ensures strictly users with `role === 'manager'` can trigger bulk mutations. Waiters are rejected with `403 Forbidden`.
+3. **Validation & Partial Batch Execution (`MenuService.bulkUpdateMenuItems`)**:
+   - Validates bulk action payload.
+   - Iterates through each targeted item ID independently.
+   - For each valid item, applies the update in PostgreSQL and records a success result.
+   - For invalid items (e.g. non-existent ID, negative price, invalid decimal precision), records a failure result with a descriptive error message without failing or rolling back valid items in the selection.
+4. **Response**: Returns HTTP 200 with `{ status: 'success', data: { results: [{ itemId, name, success, message, error }], summary: { total, succeeded, failed } } }`.
+
+### F. Daily Orders CSV Export (`GET /api/orders/export/csv`)
+1. **Client**: User triggers CSV export from `OrderList` or navigation for a specific date (or today's date).
+2. **Backend Execution (`order.csv.service.ts`)**:
+   - Authenticates staff caller (`requireStaff`).
+   - Fetches all orders placed on that calendar date with lines, totals, and primary waiter info via `OrderService.listOrders`.
+   - Serializes data into standard RFC 4180-compliant CSV text with proper quote escaping.
+3. **Response**: Sets headers `Content-Type: text/csv; charset=utf-8` and `Content-Disposition: attachment; filename="orders-YYYY-MM-DD.csv"` and streams the CSV file.
+
 ---
 
-## 4. What We Decided *Not* to Build in Phase 7
-- **No Bulk Actions or CSV Export Yet**: Bulk menu item changes and daily CSV order export are scheduled for Phase 8.
-- **No Dashboard Analytics Yet**: Landing metrics and 14-day served charts are scheduled for Phase 8.
+## 4. What We Decided *Not* to Build in Phase 8
+- **No Dashboard Analytics Yet**: Landing metrics and 14-day served charts are scheduled for Phase 9.
 - **No Immutable Audit/History Timeline Yet**: Audit event tracking is scheduled for Phase 9.
 - **No Slow-Order Alerts Yet**: Background threshold alerts and alert acknowledgement are scheduled for Phase 10.
+
 
 

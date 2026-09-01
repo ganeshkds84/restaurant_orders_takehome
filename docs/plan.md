@@ -52,36 +52,42 @@
   - Built frontend Search & Filter Toolbar in `OrderList.tsx` with responsive grid inputs for table search, status filter, waiter filter (populated from eligible waitstaff), date picker, sort controls, and a reset filters button.
   - Built frontend pagination controls displaying "Showing X to Y of Z orders", page navigation buttons (Previous/Next), and page size selector.
   - Created 17 new backend automated test cases (`tests/order-search.test.ts`) and 6 new frontend test cases (`tests/OrderSearch.test.tsx`), bringing total test suite to 138 passing automated tests (106 backend, 32 frontend).
+- **Session 8 (Current — Phase 8 Completed): Bulk Menu Item Operations & Daily Orders CSV Export**
+  - Implemented `POST /api/menu/bulk` with manager-only authorization (`requireManager`).
+  - Supported bulk price changes (with validation) and bulk availability updates (86ing multiple items at once).
+  - Built per-item granular error reporting so invalid items in a selection (e.g. negative price) fail individually with specific error messages without aborting or rolling back valid items.
+  - Implemented `GET /api/orders/export/csv` with RFC 4180 CSV serialization, streaming daily order lines, totals, statuses, waiter details, and special instructions.
+  - Built Manager Bulk Actions Toolbar in `MenuManagement.tsx` with multi-select checkboxes, Select All / Deselect All, bulk action modals, and detailed per-item result breakdown modal.
+  - Built "Export Orders (CSV)" button in `OrderList.tsx` header bar.
+  - Added 9 new backend automated test cases (`tests/bulk-menu-csv.test.ts`) and 5 new frontend test cases (`tests/BulkMenuCsv.test.tsx`), bringing total test suite to 152 passing automated tests (115 backend, 37 frontend).
 - **Future Sessions (Planned)**
-  - Session 8: Bulk Menu Operations & CSV Export, Dashboard Analytics & Audit Timeline (Phase 8)
-  - Session 9: Slow-Order Alert System (Phase 9)
+  - Session 9: Dashboard Analytics & Audit Timeline (Phase 9)
+  - Session 10: Slow-Order Alert System (Phase 10)
 
 ---
 
 ## 2. Order of Implementation and Rationale
-1. **Server Types & Zod Validator**: Defined query filter interfaces and Zod schema with string normalization, coercion, and allowlist validation first.
-2. **Repository & Service Layer**: Implemented `findPaginated` in `OrderRepository` with atomic parameterized SQL queries and dual-mode in-memory fallback, and updated `OrderService.listOrders` to enforce caller role scoping.
-3. **Route Integration**: Updated `GET /api/orders` to return paginated response structure with `orders`, `total`, `page`, `limit`, `totalPages`, and `count`.
-4. **Backend Automated Tests**: Created 17 tests in `tests/order-search.test.ts` validating all search, filter, sort, pagination, access scoping, and validation permutations.
-5. **Frontend Services & UI**: Extended `fetchOrdersApi` and built the responsive Search & Filter toolbar and pagination footer in `OrderList.tsx`.
-6. **Frontend Integration Tests**: Validated UI rendering, search/filter inputs, sort options, reset buttons, and pagination controls in `client/tests/OrderSearch.test.tsx`.
-
+1. **Server Types & Zod Validators**: Defined bulk menu types (`BulkUpdateMenuItemInput`, `BulkItemResult`, `BulkUpdateResult`) and Zod schemas first.
+2. **Menu Service & Route**: Implemented `bulkUpdateMenuItems` with per-item isolation and granular status reporting in `MenuService`, and exposed `POST /api/menu/bulk`.
+3. **CSV Export Service & Route**: Implemented `generateDailyOrdersCsv` conforming to RFC 4180 escaping and added `GET /api/orders/export/csv`.
+4. **Backend Automated Tests**: Added 9 tests in `tests/bulk-menu-csv.test.ts` validating bulk price, bulk availability, partial batch error reporting, waiter 403 authorization, and RFC 4180 CSV output.
+5. **Frontend Services & UI**: Extended menu/order services and built the Manager Bulk Actions Toolbar, Selection Checkboxes, Bulk Price Modal, Results Breakdown Modal in `MenuManagement.tsx`, and Export CSV button in `OrderList.tsx`.
+6. **Frontend Integration Tests**: Validated UI interactions, selection toggles, bulk updates, results modal, and CSV download trigger in `client/tests/BulkMenuCsv.test.tsx`.
 
 ---
 
 ## 3. Estimated vs. Actual Time
-- **Database Migration & Types**: Estimated 20m, took ~15m.
-- **Backend Service, Repository & Auth**: Estimated 45m, took ~35m.
-- **Backend Test Suite (27 test cases)**: Estimated 40m, took ~30m.
-- **Frontend UI & Modal**: Estimated 45m, took ~35m.
-- **Frontend Test Suite (4 test cases)**: Estimated 25m, took ~20m.
-- **Documentation & Verification**: Estimated 20m, took ~15m.
+- **Bulk Menu Types & Validator**: Estimated 15m, took ~10m.
+- **Backend Service, CSV Export & Routes**: Estimated 35m, took ~25m.
+- **Backend Test Suite (9 test cases)**: Estimated 30m, took ~20m.
+- **Frontend UI, Toolbar & Modals**: Estimated 40m, took ~30m.
+- **Frontend Test Suite (5 test cases)**: Estimated 25m, took ~15m.
+- **Documentation & Verification**: Estimated 15m, took ~10m.
 
 ---
 
 ## 4. What Was Cut or Deferred
-- **Advanced search/filter/sort and server-side pagination** were deferred to Phase 7.
-- **Bulk menu actions and daily CSV export** were deferred to Phase 7.
-- **Dashboard analytics and audit/history timeline** were deferred to Phase 8.
-- **Slow-order alerts** were deferred to Phase 9.
+- **Dashboard analytics and audit/history timeline** are scheduled for Phase 9.
+- **Slow-order alerts** are scheduled for Phase 10.
+
 

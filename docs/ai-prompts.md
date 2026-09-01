@@ -230,5 +230,38 @@ Implement ONLY the exact order search/finding functionality required by the ORIG
 2. **Repository Type Imports**: Added `OrderSortField` and `PaginatedOrdersResult` to type imports in `server/src/orders/order.repository.ts` to satisfy TypeScript production compilation.
 3. **Frontend Test Mock Route Handler**: Added mock handler for `/orders/eligible-waiters` across older frontend test suites (`OrderLifecycle.test.tsx` and `OrderCreation.test.tsx`) to eliminate console warnings when mounting `OrderList`.
 
+---
+
+## Phase 8 — Acting on Many Menu Items at Once & Daily Orders CSV Export
+
+### Prompt
+```
+# Phase 8 — Acting on Many Menu Items at Once & Daily Orders CSV Export
+
+We are continuing the Restaurant Orders take-home assignment.
+Implement ONLY Goal 7 from the ORIGINAL TAKE-HOME ASSIGNMENT SPECIFICATION:
+* 7. Acting on many menu items at once. Managers can select several menu items and apply one change to all of them — a new price or a change in availability — in a single action. Because some items in the selection may be invalid, such as a negative price, the result must report per item what succeeded and what was rejected and why, not just fail the whole batch. Separately, export the day's orders — every order placed that day with its lines, total and status — as a CSV file.
+* Do NOT implement later phases such as dashboard analytics, audit/history timeline, slow-order alerts, deployment, or unrelated UI polish.
+* Do NOT rewrite working architecture from previous phases.
+* Preserve all existing functionality from Phases 1–7.
+* Do NOT commit or push anything.
+* Return a clear walkthrough of exactly what was implemented and the verification results.
+```
+
+### What you got
+- Bulk menu endpoint `POST /api/menu/bulk` with manager-only authorization (`requireManager`).
+- Support for bulk price updates (with non-negative and 2-decimal validation) and bulk availability updates (86ing multiple items at once).
+- Granular per-item error reporting: invalid items in a selection (e.g. non-existent ID, negative price) fail individually with specific error messages while valid items in the batch are updated successfully.
+- Response summary structure: `{ total, succeeded, failed, results: [...] }`.
+- Daily orders CSV export endpoint `GET /api/orders/export/csv` generating standard RFC 4180 CSV with quotes, headers, and line items.
+- Manager Bulk Actions Toolbar in `MenuManagement.tsx` with multi-select checkboxes, Select All / Deselect All, bulk action modals, and detailed per-item result breakdown modal.
+- "Export Orders (CSV)" button in `OrderList.tsx` header bar.
+- 9 new backend automated test cases (`tests/bulk-menu-csv.test.ts`) and 5 new frontend test cases (`tests/BulkMenuCsv.test.tsx`), bringing total test suite to 152 passing automated tests (115 backend, 37 frontend).
+
+### What you corrected
+1. **Validation Boundary for Partial Failures**: Designed bulk schema to accept optional fields at the root level so invalid individual parameters (like negative prices) can be inspected per-item in `MenuService` and returned with specific failure reasons rather than causing a 400 rejection of the entire payload.
+2. **JSDOM Navigation Warning in Test**: Mocked `HTMLAnchorElement.prototype.click` in the frontend CSV export test to ensure clean test execution without JSDOM navigation warnings.
+
+
 
 

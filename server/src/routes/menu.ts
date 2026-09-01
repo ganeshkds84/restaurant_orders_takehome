@@ -8,6 +8,7 @@ import {
   updateAvailabilitySchema,
   updateArchiveSchema,
   menuQuerySchema,
+  bulkMenuItemSchema,
 } from '../menu/menu.validator.js';
 import { AppError } from '../errors/app-error.js';
 
@@ -17,6 +18,30 @@ const router = Router();
  * All menu routes require authentication
  */
 router.use(authenticate);
+
+/**
+ * POST /api/menu/bulk
+ * Bulk update menu items (price or availability) with per-item reporting (Manager only)
+ */
+router.post('/bulk', requireManager, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const parseResult = bulkMenuItemSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      throw AppError.badRequest('Validation failed', parseResult.error.flatten().fieldErrors);
+    }
+
+    const result = await menuService.bulkUpdateMenuItems(parseResult.data);
+
+    res.status(200).json({
+      status: 'success',
+      message: `Bulk update completed: ${result.summary.succeeded} succeeded, ${result.summary.failed} failed`,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 
 /**
  * GET /api/menu

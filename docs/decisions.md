@@ -108,4 +108,19 @@ Log of decisions that shaped this codebase — where a real alternative existed 
 - **Rejected:** Direct string interpolation of user-supplied `sortBy` parameters into SQL `ORDER BY` clauses.
 - **Why:** Direct string interpolation in SQL clauses opens dangerous SQL injection vulnerabilities. Using an explicit enum allowlist verified by Zod and mapped in repository code ensures complete security against SQL injection while delivering deterministic, stable sorting across page boundaries.
 
+---
+
+## Decision 16: Granular Per-Item Bulk Execution & Diagnostic Breakdown vs. All-or-Nothing Transaction Abort
+- **Chose:** Processing bulk menu item updates with per-item validation and status reporting (`{ total, succeeded, failed, results: [...] }`), persisting valid updates and reporting individual errors for invalid items (e.g. negative price, non-existent ID).
+- **Rejected:** Rolling back the entire batch inside a single atomic transaction if any item is invalid.
+- **Why:** Goal 7 explicitly mandates: "Because some items in the selection may be invalid, such as a negative price, the result must report per item what succeeded and what was rejected and why, not just fail the whole batch." Granular per-item reporting provides managers with clear diagnostic transparency without losing work done on valid items.
+
+---
+
+## Decision 17: RFC 4180 Streaming CSV Export vs. JSON File Download
+- **Chose:** Dedicated `GET /api/orders/export/csv` endpoint generating RFC 4180-compliant CSV (`Content-Type: text/csv; charset=utf-8` and `Content-Disposition: attachment`) with escaped quotes, headers, and line items.
+- **Rejected:** Exporting JSON files or performing client-side DOM table scraping.
+- **Why:** CSV is the industry standard for accounting, Excel imports, and restaurant operational analysis. Server-side RFC 4180 streaming guarantees correct quoting of item names with commas or quotes, handles multi-line orders accurately, and works seamlessly across devices without browser memory constraints.
+
+
 

@@ -4,6 +4,7 @@ import {
   MenuItem,
   CreateMenuItemPayload,
   UpdateMenuItemPayload,
+  BulkUpdateResponse,
 } from '../types/menu';
 import {
   fetchMenuItemsApi,
@@ -11,6 +12,7 @@ import {
   updateMenuItemApi,
   toggleMenuItemAvailabilityApi,
   toggleMenuItemArchiveApi,
+  bulkUpdateMenuItemsApi,
 } from '../services/menu.service';
 import {
   Plus,
@@ -26,6 +28,9 @@ import {
   DollarSign,
   Lock,
   RefreshCw,
+  Layers,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 
 export const MenuManagement: React.FC = () => {
@@ -41,6 +46,15 @@ export const MenuManagement: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [showArchived, setShowArchived] = useState<boolean>(false);
+
+  // Bulk selection and actions state
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [isBulkPriceModalOpen, setIsBulkPriceModalOpen] = useState<boolean>(false);
+  const [bulkPriceInput, setBulkPriceInput] = useState<string>('');
+  const [bulkPriceError, setBulkPriceError] = useState<string | null>(null);
+  const [isSubmittingBulk, setIsSubmittingBulk] = useState<boolean>(false);
+  const [bulkResultsModalOpen, setBulkResultsModalOpen] = useState<boolean>(false);
+  const [bulkResults, setBulkResults] = useState<BulkUpdateResponse | null>(null);
 
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
@@ -62,6 +76,7 @@ export const MenuManagement: React.FC = () => {
     price: '',
     isAvailable: true,
   });
+
 
   const loadMenuItems = useCallback(async () => {
     if (!token) return;
@@ -136,6 +151,81 @@ export const MenuManagement: React.FC = () => {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to update archive status');
     }
   };
+
+  // Bulk Selection Handlers
+  const handleToggleSelect = (id: string) => {
+    setSelectedItemIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedItemIds.length === filteredItems.length && filteredItems.length > 0) {
+      setSelectedItemIds([]);
+    } else {
+      setSelectedItemIds(filteredItems.map((i) => i.id));
+    }
+  };
+
+  const handleOpenBulkPriceModal = () => {
+    setBulkPriceInput('');
+    setBulkPriceError(null);
+    setIsBulkPriceModalOpen(true);
+  };
+
+  const handleBulkPriceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || selectedItemIds.length === 0) return;
+
+    const numPrice = parseFloat(bulkPriceInput);
+    if (isNaN(numPrice) || numPrice < 0) {
+      setBulkPriceError('Please enter a valid non-negative price (e.g. 15.00)');
+      return;
+    }
+
+    try {
+      setIsSubmittingBulk(true);
+      setBulkPriceError(null);
+      const res = await bulkUpdateMenuItemsApi(token, {
+        itemIds: selectedItemIds,
+        action: 'update_price',
+        price: numPrice,
+      });
+
+      setBulkResults(res);
+      setIsBulkPriceModalOpen(false);
+      setBulkResultsModalOpen(true);
+      setSelectedItemIds([]);
+      await loadMenuItems();
+    } catch (err) {
+      setBulkPriceError(err instanceof Error ? err.message : 'Failed to update prices');
+    } finally {
+      setIsSubmittingBulk(false);
+    }
+  };
+
+  const handleBulkAvailability = async (isAvailable: boolean) => {
+    if (!token || selectedItemIds.length === 0) return;
+    try {
+      setIsSubmittingBulk(true);
+      setErrorMessage(null);
+      const res = await bulkUpdateMenuItemsApi(token, {
+        itemIds: selectedItemIds,
+        action: 'update_availability',
+        isAvailable,
+      });
+
+      setBulkResults(res);
+      setBulkResultsModalOpen(true);
+      setSelectedItemIds([]);
+      await loadMenuItems();
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to update availability');
+    } finally {
+      setIsSubmittingBulk(false);
+    }
+  };
+
 
   // Open Create Modal
   const handleOpenCreateModal = () => {
@@ -457,6 +547,123 @@ export const MenuManagement: React.FC = () => {
             </button>
           ))}
         </div>
+
+        {/* Manager Bulk Actions Toolbar */}
+        {isManager && filteredItems.length > 0 && (
+          <div
+            data-testid="bulk-actions-toolbar"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              paddingTop: '0.75rem',
+              borderTop: '1px solid var(--border-subtle)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button
+                type="button"
+                data-testid="btn-select-all"
+                onClick={handleSelectAll}
+                className="btn btn-secondary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.3rem 0.65rem',
+                  fontSize: '0.75rem',
+                }}
+              >
+                {selectedItemIds.length === filteredItems.length && filteredItems.length > 0 ? (
+                  <>
+                    <CheckSquare size={14} />
+                    <span>Deselect All</span>
+                  </>
+                ) : (
+                  <>
+                    <Square size={14} />
+                    <span>Select All ({filteredItems.length})</span>
+                  </>
+                )}
+              </button>
+
+              {selectedItemIds.length > 0 && (
+                <span
+                  data-testid="selected-count-badge"
+                  style={{
+                    fontSize: '0.8125rem',
+                    color: 'var(--accent-primary)',
+                    fontWeight: 600,
+                  }}
+                >
+                  {selectedItemIds.length} {selectedItemIds.length === 1 ? 'item' : 'items'} selected
+                </span>
+              )}
+            </div>
+
+            {selectedItemIds.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  data-testid="btn-bulk-price"
+                  onClick={handleOpenBulkPriceModal}
+                  className="btn btn-secondary"
+                  disabled={isSubmittingBulk}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    padding: '0.35rem 0.75rem',
+                    fontSize: '0.8125rem',
+                  }}
+                >
+                  <DollarSign size={14} />
+                  <span>Change Price</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="btn-bulk-available"
+                  onClick={() => handleBulkAvailability(true)}
+                  className="btn btn-secondary"
+                  disabled={isSubmittingBulk}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    padding: '0.35rem 0.75rem',
+                    fontSize: '0.8125rem',
+                    color: '#4ade80',
+                  }}
+                >
+                  <CheckCircle2 size={14} />
+                  <span>Set Available</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="btn-bulk-unavailable"
+                  onClick={() => handleBulkAvailability(false)}
+                  className="btn btn-secondary"
+                  disabled={isSubmittingBulk}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    padding: '0.35rem 0.75rem',
+                    fontSize: '0.8125rem',
+                    color: '#f87171',
+                  }}
+                >
+                  <XCircle size={14} />
+                  <span>Set Unavailable (86)</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Menu Items List */}
@@ -520,24 +727,38 @@ export const MenuManagement: React.FC = () => {
                     marginBottom: '0.75rem',
                   }}
                 >
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      padding: '0.2rem 0.6rem',
-                      borderRadius: 'var(--radius-full)',
-                      backgroundColor: 'rgba(99, 102, 241, 0.12)',
-                      color: 'var(--accent-primary)',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    <Tag size={12} />
-                    {item.category}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {isManager && (
+                      <input
+                        type="checkbox"
+                        data-testid={`checkbox-item-${item.id}`}
+                        checked={selectedItemIds.includes(item.id)}
+                        onChange={() => handleToggleSelect(item.id)}
+                        style={{ cursor: 'pointer', accentColor: 'var(--accent-primary)', width: '16px', height: '16px' }}
+                        title="Select item for bulk action"
+                      />
+                    )}
+
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: 'var(--radius-full)',
+                        backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                        color: 'var(--accent-primary)',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      <Tag size={12} />
+                      {item.category}
+                    </span>
+                  </div>
+
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     {item.isArchived && (
@@ -949,6 +1170,291 @@ export const MenuManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Bulk Price Update Modal */}
+      {isBulkPriceModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bulk-price-modal-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '1rem',
+          }}
+        >
+          <div
+            className="glass-card"
+            style={{
+              width: '100%',
+              maxWidth: '440px',
+              padding: '1.75rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.25rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--accent-primary)' }}>
+              <DollarSign size={24} />
+              <h3 id="bulk-price-modal-title" style={{ fontSize: '1.25rem', margin: 0, color: 'var(--text-primary)' }}>
+                Bulk Update Price
+              </h3>
+            </div>
+
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', margin: 0 }}>
+              Apply a new price to <strong>{selectedItemIds.length}</strong> selected dishes.
+            </p>
+
+            {bulkPriceError && (
+              <div
+                role="alert"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.75rem',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'var(--alert-bg)',
+                  border: '1px solid var(--alert-border)',
+                  color: 'var(--alert-text)',
+                  fontSize: '0.8125rem',
+                }}
+              >
+                <AlertCircle size={16} />
+                <span>{bulkPriceError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleBulkPriceSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label
+                  htmlFor="bulk-price-input"
+                  style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.35rem' }}
+                >
+                  New Price ($) *
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <DollarSign
+                    size={16}
+                    style={{
+                      position: 'absolute',
+                      left: '0.75rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: 'var(--text-muted)',
+                    }}
+                  />
+                  <input
+                    id="bulk-price-input"
+                    data-testid="bulk-price-input"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    placeholder="15.00"
+                    value={bulkPriceInput}
+                    onChange={(e) => setBulkPriceInput(e.target.value)}
+                    className="input"
+                    style={{ paddingLeft: '2.25rem', width: '100%' }}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsBulkPriceModalOpen(false)}
+                  className="btn btn-secondary"
+                  disabled={isSubmittingBulk}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  data-testid="btn-confirm-bulk-price"
+                  className="btn btn-primary"
+                  disabled={isSubmittingBulk}
+                >
+                  {isSubmittingBulk ? 'Updating...' : `Update ${selectedItemIds.length} Items`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Results Summary Modal */}
+      {bulkResultsModalOpen && bulkResults && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          data-testid="bulk-results-modal"
+          aria-labelledby="bulk-results-modal-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '1rem',
+          }}
+        >
+          <div
+            className="glass-card"
+            style={{
+              width: '100%',
+              maxWidth: '560px',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              padding: '1.75rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.25rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <Layers size={22} color="var(--accent-primary)" />
+                <h3 id="bulk-results-modal-title" style={{ fontSize: '1.25rem', margin: 0 }}>
+                  Bulk Action Summary
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setBulkResultsModalOpen(false)}
+                className="btn btn-secondary"
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.8125rem' }}
+              >
+                Close
+              </button>
+            </div>
+
+            {/* Summary Stats */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '0.75rem',
+                textAlign: 'center',
+              }}
+            >
+              <div
+                style={{
+                  padding: '0.75rem',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid var(--border-glass)',
+                }}
+              >
+                <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{bulkResults.summary.total}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Total Items</div>
+              </div>
+
+              <div
+                style={{
+                  padding: '0.75rem',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                  color: '#4ade80',
+                }}
+              >
+                <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{bulkResults.summary.succeeded}</div>
+                <div style={{ fontSize: '0.75rem' }}>Succeeded</div>
+              </div>
+
+              <div
+                style={{
+                  padding: '0.75rem',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: bulkResults.summary.failed > 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255, 255, 255, 0.04)',
+                  border: bulkResults.summary.failed > 0 ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border-glass)',
+                  color: bulkResults.summary.failed > 0 ? '#f87171' : 'var(--text-muted)',
+                }}
+              >
+                <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{bulkResults.summary.failed}</div>
+                <div style={{ fontSize: '0.75rem' }}>Failed / Rejected</div>
+              </div>
+            </div>
+
+            {/* Granular Per-Item List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Item Breakdown:
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                  maxHeight: '260px',
+                  overflowY: 'auto',
+                }}
+              >
+                {bulkResults.results.map((res) => (
+                  <div
+                    key={res.itemId}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: 'var(--radius-sm)',
+                      backgroundColor: res.success ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.08)',
+                      border: `1px solid ${res.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.3)'}`,
+                      fontSize: '0.8125rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                      <span style={{ fontWeight: 600 }}>{res.name || res.itemId}</span>
+                      <span style={{ fontSize: '0.75rem', color: res.success ? '#86efac' : '#fca5a5' }}>
+                        {res.message || res.error}
+                      </span>
+                    </div>
+
+                    <span
+                      style={{
+                        padding: '0.2rem 0.5rem',
+                        borderRadius: 'var(--radius-full)',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        backgroundColor: res.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                        color: res.success ? '#4ade80' : '#f87171',
+                      }}
+                    >
+                      {res.success ? 'SUCCESS' : 'REJECTED'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                data-testid="btn-close-bulk-results"
+                onClick={() => setBulkResultsModalOpen(false)}
+                className="btn btn-primary"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

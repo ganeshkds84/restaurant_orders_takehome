@@ -10,6 +10,7 @@ import {
   fetchEligibleWaitersApi,
   addCollaboratorApi,
   removeCollaboratorApi,
+  exportOrdersCsvApi,
 } from '../services/order.service';
 import {
   Receipt,
@@ -34,7 +35,9 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Download,
 } from 'lucide-react';
+
 
 interface OrderListProps {
   onSelectOrder?: (order: Order) => void;
@@ -133,6 +136,37 @@ export const OrderList: React.FC<OrderListProps> = () => {
     setSortOrder('desc');
     setCurrentPage(1);
   };
+
+  const [isExportingCsv, setIsExportingCsv] = useState<boolean>(false);
+
+  const handleExportCsv = async () => {
+    if (!token) return;
+    try {
+      setIsExportingCsv(true);
+      setErrorMessage(null);
+      const targetDate = dateFilter || new Date().toISOString().slice(0, 10);
+      const csvText = await exportOrdersCsvApi(token, targetDate);
+
+      // Trigger browser file download
+      const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `orders-${targetDate}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setActionSuccessMessage(`Exported orders for ${targetDate} successfully`);
+      setTimeout(() => setActionSuccessMessage(null), 3500);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to export orders CSV');
+    } finally {
+      setIsExportingCsv(false);
+    }
+  };
+
 
 
   const toggleExpand = async (orderId: string) => {
@@ -418,16 +452,32 @@ export const OrderList: React.FC<OrderListProps> = () => {
           </p>
         </div>
 
-        <button
-          onClick={loadOrders}
-          className="btn btn-secondary"
-          disabled={isLoading}
-          title="Refresh orders list"
-        >
-          <RotateCcw size={16} />
-          <span>Refresh</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            data-testid="btn-export-orders-csv"
+            onClick={handleExportCsv}
+            className="btn btn-secondary"
+            disabled={isLoading || isExportingCsv}
+            title="Export day's orders as CSV"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <Download size={16} />
+            <span>{isExportingCsv ? 'Exporting...' : 'Export Orders (CSV)'}</span>
+          </button>
+
+          <button
+            onClick={loadOrders}
+            className="btn btn-secondary"
+            disabled={isLoading}
+            title="Refresh orders list"
+          >
+            <RotateCcw size={16} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
+
 
       {/* Search & Filter Toolbar */}
       <div

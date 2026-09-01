@@ -127,3 +127,26 @@ export async function toggleMenuItemArchiveApi(
 
   return body.data.item;
 }
+
+export async function bulkUpdateMenuItemsApi(
+  token: string,
+  payload: import('../types/menu').BulkUpdateMenuItemPayload
+): Promise<import('../types/menu').BulkUpdateResponse> {
+  const response = await fetch(`${API_BASE}/menu/bulk`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const body = (await response.json()) as ApiResponse<import('../types/menu').BulkUpdateResponse>;
+  if (!response.ok || body.status !== 'success' || !body.data) {
+    const errorDetails = body.details ? Object.values(body.details).flat().join(', ') : '';
+    throw new Error(errorDetails ? `${body.message}: ${errorDetails}` : body.message || 'Failed to execute bulk update');
+  }
+
+  return body.data;
+}
+
