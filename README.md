@@ -1,191 +1,241 @@
-# Assignment 09 — Restaurant Orders
+# Spice Route Restaurant — Restaurant Orders Platform
 
-## The scenario
-
-Picture a busy independent restaurant taking orders on paper tickets that get carried by hand from
-the counter to the kitchen and pinned to a corkboard until someone remembers to take them down. The
-menu lives on a printed sheet and a chalkboard of specials, and when a price changes or the kitchen
-runs out of an ingredient, someone has to physically cross it out and hope every waiter notices
-before taking the next order.
-
-The result is predictable. A ticket falls off the corkboard and an order never reaches the kitchen,
-so a table sits wondering where their food is while the kitchen has no idea anyone is waiting. A
-price changes on the chalkboard but not in anyone's head, so two customers at the same table get
-charged differently for the same dish depending on who rang it up. Nobody can say how long an order
-has actually been sitting without physically walking back and asking the kitchen.
-
-They want one system: a manager keeps the menu, its prices and what's currently available up to date
-in one place, and waiters place and track orders from table to kitchen to table again without a
-paper ticket ever leaving the building. Anyone should be able to tell which orders have been sitting
-too long without walking back to check. Build the system that replaces the corkboard.
-
-## What it must do
-
-Everything below is required. Several of the ten spell out exact rules — what happens on an illegal
-move, what a bulk action must report back, when a dismissed alert is allowed to reappear — and those
-specifics are the actual ask, not just the bold headline in front of them.
-
-1. **Accounts and roles.** People sign in with an email and password, and there are at least two
-roles — a manager role and a waiter role. Managers create and archive menu items, set their name,
-price and availability, and can see and act on every order. Waiters create orders and act on the
-ones they created or are added to, but cannot create menu items, change prices, or act on another
-waiter's order unless added to it. The difference must be enforced on the server, not just hidden in
-the interface.
-
-2. **Orders.** Waiters and managers create orders for a table, identified by a table number; the
-waiter who creates an order becomes its primary waiter. Orders can be archived and restored.
-Archiving removes old orders from the default active queue without destroying their history.
-
-3. **Order lines.** Every order line belongs to exactly one order and carries a menu item, a
-quantity, and any special instructions. Lines can be added to an order at any point before it is
-served. Opening an order shows its lines and their running total, calculated by the server from the
-menu items' current prices at the time each line was added.
-
-4. **An order lifecycle with rules.** An order moves through *Placed → Accepted → Preparing → Ready
-→ Served*. It can be cancelled, marked *Cancelled*, but only while it is still Placed or Accepted —
-once the kitchen has begun Preparing, the order can no longer be cancelled as a whole. Any line on
-an order can be voided, marked *Void*, with a required reason for as long as the order remains open,
-meaning any state before Served or Cancelled; voiding marks the line rather than deleting it, so the
-order's original record stays intact. Any other move must be rejected by the server with a message
-explaining why.
-
-5. **Collaborators.** An order has one primary waiter, but any number of other waiters can be added
-to it as collaborators who can also update it, and a single waiter can collaborate on any number of
-orders. Every waiter can see one list of every order where they are the primary waiter or a
-collaborator.
-
-6. **Finding orders.** One list shows orders across every table the viewer can see, with a text
-search over the table number, filters for status, waiter and date, sorting by placed time, status or
-table, and pagination showing the total number of matches. All of this must happen on the server —
-do not load every order into the browser and filter there.
-
-7. **Acting on many menu items at once.** Managers can select several menu items and apply one
-change to all of them — a new price or a change in availability — in a single action. Because some
-items in the selection may be invalid, such as a negative price, the result must report per item
-what succeeded and what was rejected and why, not just fail the whole batch. Separately, export the
-day's orders — every order placed that day with its lines, total and status — as a CSV file.
-
-8. **A dashboard.** A landing view shows headline numbers — open orders, orders placed today, orders
-served today, and revenue today. It also breaks orders down by status and by waiter, and charts
-orders served per day over the last fourteen days.
-
-9. **History you cannot rewrite.** Every order has a timeline showing every status change with the
-old and new status and who made it, every line added or voided with its reason, and any notes left
-on it. Nothing in this timeline can be edited or deleted after the fact, including by managers.
-
-10. **Slow-order alerts.** An order that has been open for more than a set number of minutes without
-reaching Ready appears in an alerts area, with a count badge visible in the navigation. A waiter or
-manager can acknowledge the alert for that order, clearing it from the list. If the order is still
-not Ready a further set number of minutes later, the alert returns.
-
-## Stretch ideas (optional)
-
-None of these are required, and none substitute for a goal above. If you finish all ten with time
-left over, pick whichever of these sounds most useful and build it:
-
-- A kitchen display screen instead of printed tickets.
-- Table-side ordering from a handheld device.
-- Split checks across multiple payers.
-- A loyalty or repeat-customer program.
-- Ingredient-level stock deduction per order.
-- Reservation and table management.
-- Printable or emailed receipts.
-- Time-of-day pricing for happy-hour specials.
-- Multiple locations with per-location pricing.
-
+> **Authentic Indian Dining • Operations Platform**  
+> A high-reliability, full-stack restaurant operations platform replacing physical order tickets with real-time order lifecycle tracking, menu management, waiter collaboration, operational analytics, audit trails, and slow-order alerts.
 
 ---
 
-## What we are assessing
+## Project Overview
 
-A working application is table stakes. Almost every serious candidate will produce something that runs, has a login, and roughly does what was asked. That's the floor, not the differentiator.
+Spice Route Restaurant Orders is built to eliminate the errors and bottlenecks of paper-based restaurant operations: lost kitchen tickets, uncoordinated menu price changes, untracked order delays, and lack of visibility into daily revenue.
 
-What actually separates submissions is the record of thinking behind the app: the decisions you made and why, the trade-offs you weighed, what you built first and what you deliberately left out, and whether you can explain any part of your own system when asked. We are hiring for judgement. The app is the evidence for that judgement, not the deliverable in itself.
+### Core Capabilities
 
-We also read the code itself for structure and readability, which counts for a small share of the overall score.
+- **Role-Based Access Control (RBAC)**: Distinct permissions for **Managers** (full menu management, bulk actions, operations dashboard, all orders) and **Waiters** (create orders, manage assigned/collaborative orders, read-only menu). All permissions are strictly enforced server-side.
+- **Menu Management**: Real-time menu catalogue with categorisation, pricing, descriptions, and instantaneous availability toggling (86ing items).
+- **Order Creation & Precision Pricing**: Real-time table order creation with unit price snapshotting on order lines (`NUMERIC(10, 2)` precision), guaranteeing that menu price changes never retroactively mutate past orders.
+- **Authoritative Order Lifecycle**: Formal state machine progression (*Placed → Accepted → Preparing → Ready → Served*). Cancellations are strictly restricted to *Placed* or *Accepted* states. Order lines can be voided with mandatory reasons without deleting historical records.
+- **Waiter Collaboration**: Primary waiter assignment with multi-waiter collaboration. Waiters can seamlessly view and manage orders they created or were added to.
+- **Server-Side Order Search & Filtering**: Fast text search over table numbers, multi-criteria filtering (status, waiter, date), multi-field sorting, and pagination with full count metadata.
+- **Bulk Menu Actions & CSV Export**: Bulk price adjustments and availability toggles with granular, per-item success/failure reporting. Daily orders export to standard RFC 4180 CSV for accounting and reconciliation.
+- **Operations Dashboard**: Real-time operational intelligence including today's revenue, active open orders, orders placed/served, status distribution breakdown, waiter performance metrics, and a 14-day volume trend chart.
+- **Immutable Audit History**: Tamper-proof, append-only timeline tracking every status change (with old/new state and actor), line addition, line voiding (with reason), and ticket notes.
+- **Slow-Order Alerts**: Dynamic server-side elapsed time monitoring for open orders exceeding configurable thresholds. Includes alert acknowledgement, navigation badge indicators, and automatic re-alert reactivation.
 
-## Time budget
+---
 
-Budget about 12 hours total, spent roughly 2 hours a day across a week.
+## Technology Stack
 
-This is not a race. We are not timing you against other candidates, and submitting early scores nothing extra. Twelve hours is a size guide so you know how much to attempt — pace yourself, stop when you're tired, and spend some of that time thinking and documenting, not only typing code.
+### Frontend
+- **Framework**: React 18 with TypeScript
+- **Tooling**: Vite (fast HMR, optimized production bundling)
+- **Icons**: Lucide Icons (`lucide-react`)
+- **Styling**: Vanilla CSS design system with curated responsive design and Indian restaurant branding
+- **Testing**: Vitest, React Testing Library, jsdom
 
-## Pick any stack you like
+### Backend
+- **Runtime**: Node.js
+- **Server Framework**: Express with TypeScript
+- **Validation**: Zod (strict runtime schema parsing for requests, queries, and environment variables)
+- **Security**: `bcryptjs` (salted password hashing), `jsonwebtoken` (stateless JWT Bearer authorization)
+- **Database Client**: `pg` (PostgreSQL client pool with parameterised queries)
+- **Logging**: Winston (structured JSON and colored console logging)
+- **Testing**: Vitest, Supertest
 
-Use any language, any framework, any UI library, any ORM, and any database access approach you want. We have no house stack, and no stack scores better than another — this round is not a test of whether you know particular tools.
+### Database
+- **Engine**: PostgreSQL 14+
+- **Data Types**: `UUID` primary keys, `NUMERIC(10, 2)` for monetary values, `TIMESTAMPTZ` for audit timestamps
+- **Integrity**: Strict foreign key constraints (`ON DELETE CASCADE` / `ON DELETE RESTRICT`), check constraints (`price >= 0`, `quantity > 0`), and compound indexes for fast lookups
+- **Migrations**: Sequential SQL migrations with transactional tracking
 
-Use whatever you are fastest and most confident in. Time spent learning something new to impress us is time not spent on the ten goals above, and it will show.
+> **Note**: This project uses native **PostgreSQL** with connection pooling (`pg`), not Supabase.
 
-## Using AI is allowed and encouraged
+---
 
-Use AI tools however you want — to scaffold code, debug a stuck problem, write tests, draft documentation, or anything else that helps you move faster. A few things to know about how we treat it:
+## Architecture
 
-- We do not penalise AI use, and we make no attempt to detect it.
-- We care about whether you understood, directed and verified the output — not about who or what produced the first draft of it.
-- `docs/ai-prompts.md` must contain the prompts you actually used, including the ones that produced bad output and what you changed afterwards. If you used no AI at all, say so here and describe how you worked instead — that is assessed the same way.
-- Submitting generated code you cannot explain is the single most common way candidates fail this round.
+The backend adheres to a clean, decoupled layered architecture:
 
-You are accountable for everything in your submission. If a reviewer points at a piece of code and asks why it's there, or why it works the way it does, "the AI wrote it" is not an answer.
+```
+HTTP Request
+     │
+     ▼
+[ Express Router ] ── (Routes, CORS, JWT Auth & RBAC Middleware)
+     │
+     ▼
+[ Zod Validation ] ── (Input Sanitization & Schema Parsing)
+     │
+     ▼
+[ Service Layer  ] ── (Business Logic, State Machine, Authorization Rules)
+     │
+     ▼
+[ Repository     ] ── (PostgreSQL Parameterized Queries & Transactions)
+     │
+     ▼
+[ PostgreSQL DB  ] ── (Tables, Constraints, Indexes, Audit Ledger)
+```
 
-## Use git properly
+- **Authentication & Authorization**: Handled via stateless JWT bearer tokens in `Authorization: Bearer <token>` headers. Centralized middleware (`authenticate`, `requireRole`, `order.auth.ts`) guarantees that unauthorized actors cannot inspect or modify orders.
+- **Financial Precision**: Monetary amounts are stored as `NUMERIC(10, 2)` in PostgreSQL and handled as precise numbers in the backend, eliminating floating-point rounding errors.
+- **Dual-Mode Data Access**: Repositories support live PostgreSQL pooling with an automated, in-memory fallback store for offline testing resilience.
 
-Publish to a public GitHub repository, and commit incrementally as the work actually happens — after each meaningful step, not in one pass at the end.
+---
 
-A repository whose entire history is a single "initial commit" containing a finished app scores zero on git history, and it colours how we read everything else in your submission, however good the app itself is. Your history is how we see the order you built in, where you got stuck, and how the design changed along the way. If it isn't there, we can't assess it, and we won't assume the best.
+## Prerequisites
 
-## What you must commit
+Ensure you have the following installed on your system:
+- **Node.js**: v18.0.0 or higher
+- **npm**: v9.0.0 or higher
+- **PostgreSQL**: v14.0 or higher (running locally or accessible via network)
 
-Alongside your code, commit these five files under `docs/`. Your zip includes a stub for each with the questions it needs to answer — fill them in as you go, not from memory at the end.
+---
 
-| File | What it must answer |
-|------|----------------------|
-| `docs/architecture.md` | What the moving pieces are, how they talk to each other, where each one runs, the request path for one representative user action end to end, and what you decided not to build. |
-| `docs/schema.md` | Every table's columns and types, which relationships are one-to-many versus many-to-many, which constraints live in the database versus the application, what you deliberately denormalised, and what would break first at 100x the data. |
-| `docs/plan.md` | How you split the work into sessions, what order you built in and why, what you estimated versus what it actually took, and what you cut when you ran short. |
-| `docs/decisions.md` | At least five real decisions — what you chose, what you rejected, and why — including at least one you later reversed. |
-| `docs/ai-prompts.md` | The prompts you actually used, in order, grouped by what you were trying to do, including at least one that produced something wrong and what you did about it. |
+## Installation & Quick Start
 
-## Host it for free
+### 1. Clone the Repository
+```bash
+git clone https://github.com/ganeshkds84/restaurant_orders_takehome.git
+cd restaurant_orders_takehome
+```
 
-Deploy the whole thing somewhere reachable by URL, using free tiers only.
+### 2. Install Dependencies
+Install all workspace dependencies across root, server, and client:
+```bash
+npm run install:all
+```
+*(Or install individually: `npm install`, `npm install --prefix server`, and `npm install --prefix client`)*
 
-One combination that works, if you would rather not decide:
+### 3. Configure Environment Variables
+Copy the example environment files:
 
-- **Database** — a managed service such as Supabase.
-- **Server-side code** — Render.
-- **Browser-side code** — Vercel.
+```bash
+# Server configuration
+cp server/.env.example server/.env
 
-Deploy in that order: create the database first, give the server its connection details as environment variables, then point the browser-side part at the server's public URL.
+# Client configuration (optional, defaults to /api proxy)
+cp client/.env.example client/.env
+```
 
-This is one option, not a requirement. Any free host is equally acceptable — everything on a single provider, one virtual machine, a container platform, a static host with serverless functions. The choice earns and loses nothing.
+Review and update `server/.env` with your PostgreSQL database credentials:
+```env
+PORT=4000
+NODE_ENV=development
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/restaurant_orders
+CORS_ORIGIN=http://localhost:5173
+JWT_SECRET=development_jwt_secret_key_restaurant_orders_super_secure_phase2
+JWT_EXPIRES_IN=8h
+```
 
-Requirements:
+### 4. Create and Migrate the Database
+Create the database in PostgreSQL (e.g. using `psql`):
+```sql
+CREATE DATABASE restaurant_orders;
+```
 
-- A working live URL.
-- Seeded with enough demo data to show the system doing something, not an empty shell.
-- Demo credentials for every role recorded in `SUBMISSION.md`.
-- Connection strings, keys and passwords kept in environment variables, never in the repository.
-- Free tiers often sleep when idle and can take a minute or more to wake. Note it in `SUBMISSION.md` if yours does, so a slow first load is not read as a broken deployment.
-- If you cannot get it hosted, submit anyway and record in `SUBMISSION.md` what you tried and where it broke.
+Run the automated SQL migrations:
+```bash
+npm run db:migrate
+```
 
-## How to submit
+### 5. Seed Demo Data
+Populate initial demo staff accounts and authentic Indian restaurant menu items:
+```bash
+npm run db:seed
+```
 
-Send us:
+### 6. Start the Application
+Run both backend and frontend concurrently in development mode:
+```bash
+npm run dev
+```
 
-- The URL of your public GitHub repository.
-- The URL of your live, deployed application.
-- Your completed `SUBMISSION.md`, committed to the repository.
+Alternatively, run them in separate terminals:
+```bash
+# Terminal 1 — Backend API (http://localhost:4000)
+npm run dev:server
 
-That's the whole submission. Nothing else to prepare, no separate form.
+# Terminal 2 — Frontend App (http://localhost:5173)
+npm run dev:client
+```
 
-## What happens next
+Open your browser and navigate to `http://localhost:5173`.
 
-If your submission clears the bar, we'll set up a short call. We will ask about specific decisions we can see in your repository and its history — why you modelled something a particular way, what a certain commit was fixing, what you'd change if you kept going.
+---
 
-We're telling you this now because it should change how carefully you document as you go. Write `docs/decisions.md` for a version of yourself who has to explain it three weeks from now.
+## Environment Variables Reference
 
-## Scope
+### Backend (`server/.env`)
 
-The 10 goals stated in this brief are the cutoff. Meet all 10, solidly, and you have a complete submission.
+| Variable | Type | Default | Description | Required |
+|---|---|---|---|---|
+| `PORT` | Number | `4000` | Port for the Express backend server | Optional |
+| `NODE_ENV` | String | `development` | Runtime environment (`development`, `production`, `test`) | Optional |
+| `DATABASE_URL` | String | `postgresql://postgres:postgres@localhost:5432/restaurant_orders` | PostgreSQL connection string | Required in production |
+| `CORS_ORIGIN` | String | `http://localhost:5173` | Allowed origin for frontend CORS requests | Optional |
+| `JWT_SECRET` | String | *(development secret)* | Secret key for signing and verifying JWT tokens | Required in production |
+| `JWT_EXPIRES_IN` | String | `8h` | Token expiration duration string (e.g. `8h`, `1d`) | Optional |
 
-Stretch ideas are optional. They exist for candidates who finish the 10 with time left and want to keep building — they are never required, and they do not make up for a goal you didn't hit. Doing 8 goals well beats doing 10 goals badly. If time is short, finish fewer goals properly rather than leaving all ten half-done.
+### Frontend (`client/.env`)
+
+| Variable | Type | Default | Description | Required |
+|---|---|---|---|---|
+| `VITE_API_BASE_URL` | String | `/api` | Base path or URL for backend API endpoints | Optional |
+
+---
+
+## Database Migrations
+
+Database migrations are located in `server/src/db/migrations/` and run sequentially via `npm run db:migrate`:
+
+1. `001_create_users.sql`: Creates `users` table with email uniqueness, bcrypt password hash, and `manager` / `waiter` roles.
+2. `002_create_menu_items.sql`: Creates `menu_items` table with categories, descriptions, `NUMERIC(10, 2)` prices, and availability flags.
+3. `003_create_orders_and_order_lines.sql`: Creates `orders` and `order_lines` tables with unit price snapshotting, foreign keys, and status constraints.
+4. `004_create_order_collaborators.sql`: Creates `order_collaborators` junction table supporting multi-waiter assignments.
+5. `005_create_order_audit_events.sql`: Creates `order_audit_events` immutable ledger table with chronological indexing.
+6. `006_create_order_alert_acknowledgements.sql`: Creates `order_alert_acknowledgements` table tracking alert dismissals and re-alert cycles.
+
+---
+
+## Running Tests
+
+The test suite contains 205 automated tests verifying business logic, edge cases, RBAC security, state machines, and frontend user flows.
+
+```bash
+# Run all tests across backend and frontend
+npm run test
+
+# Run backend tests only (Vitest + Supertest)
+npm run test:server
+
+# Run frontend tests only (Vitest + React Testing Library)
+npm run test:client
+```
+
+### Current Test Suite Status
+- **Backend**: 148 / 148 passing (10 test files)
+- **Frontend**: 57 / 57 passing (12 test files)
+- **Total**: 205 / 205 passing
+
+---
+
+## Build & Typecheck
+
+```bash
+# Typecheck both backend and frontend
+npm run typecheck
+
+# Build both backend and frontend for production
+npm run build
+```
+
+Individual commands:
+- `npm run typecheck:server` / `npm run typecheck:client`
+- `npm run build:server` / `npm run build:client`
+
+---
+
+## Demo Credentials & Evaluator Notes
+
+For convenience, the login interface features **one-click demo login buttons** that pre-fill credentials for testing.
+
+Evaluator credentials, implementation mapping, and assignment details are fully documented in [SUBMISSION.md](file:///c:/PROJECTS/takehome_09/Proj_K/SUBMISSION.md).
