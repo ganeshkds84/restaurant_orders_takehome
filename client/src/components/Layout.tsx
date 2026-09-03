@@ -22,7 +22,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         }}
       >
         <div className="container">
-          Restaurant Orders System • Clean Architecture Foundation
+          Spice Route Restaurant • Indian Dining Management Platform
         </div>
       </footer>
     </div>

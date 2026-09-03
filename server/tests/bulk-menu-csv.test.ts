@@ -223,10 +223,10 @@ describe('Bulk Menu Item Operations & Daily Orders CSV Export API (Phase 8)', ()
       expect(csvText).toContain('"Order ID","Table Number","Status","Placed At"');
       expect(csvText).toContain('"Table 42"');
       expect(csvText).toContain('"placed"');
-      expect(csvText).toContain('"Truffle Fries"');
+      expect(csvText).toContain('"Veg Samosa"');
       expect(csvText).toContain('"2"');
       expect(csvText).toContain('"Extra crispy"');
-      expect(csvText).toContain('"Caesar Salad"');
+      expect(csvText).toContain('"Paneer Tikka"');
     });
 
     it('8. Exports CSV for a date with no orders returning header row safely', async () => {

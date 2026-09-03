@@ -166,9 +166,9 @@ describe('Menu Item Management & Availability Frontend UI (Phase 3)', () => {
       expect(screen.getByText('Menu Catalog & Availability')).toBeInTheDocument();
       expect(screen.getByText(/Add Menu Item/i)).toBeInTheDocument();
       expect(screen.getByText('Truffle Fries')).toBeInTheDocument();
-      expect(screen.getByText('$9.50')).toBeInTheDocument();
+      expect(screen.getByText(/9\.50/)).toBeInTheDocument();
       expect(screen.getByText('Margherita Pizza')).toBeInTheDocument();
-      expect(screen.getByText('$16.50')).toBeInTheDocument();
+      expect(screen.getByText(/16\.50/)).toBeInTheDocument();
     });
 
     // Check presence of manager-only action buttons
@@ -242,7 +242,7 @@ describe('Menu Item Management & Availability Frontend UI (Phase 3)', () => {
     expect(screen.getByText('Add New Menu Item')).toBeInTheDocument();
 
     const nameInput = screen.getByLabelText(/Dish Name \*/i);
-    const priceInput = screen.getByLabelText(/Price \(\$\) \*/i);
+    const priceInput = screen.getByLabelText(/Price.*?\*/i);
     const descInput = screen.getByLabelText(/Description & Ingredients/i);
 
     fireEvent.change(nameInput, { target: { value: 'Crispy Calamari' } });

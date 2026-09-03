@@ -26,8 +26,7 @@ beforeEach(() => {
 describe('Client Foundation Shell & App', () => {
   it('renders application header, login form and titles', async () => {
     render(<App />);
-    expect(screen.getByText('Restaurant Orders')).toBeInTheDocument();
-    expect(screen.getByText('Restaurant Orders Platform')).toBeInTheDocument();
+    expect(screen.getAllByText('Spice Route Restaurant').length).toBeGreaterThan(0);
     expect(screen.getByText('System Sign In')).toBeInTheDocument();
 
     await waitFor(() => {

@@ -61,10 +61,10 @@ const MainContent: React.FC = () => {
                 marginBottom: '0.5rem',
               }}
             >
-              Restaurant Orders Platform
+              Spice Route Restaurant
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>
-              Phase 4: Order Creation, Lines & Historical Price Snapshots
+              Authentic Indian Dining • Operations Platform
             </p>
           </div>
 

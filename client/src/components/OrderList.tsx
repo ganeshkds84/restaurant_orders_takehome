@@ -14,6 +14,7 @@ import {
   exportOrdersCsvApi,
 } from '../services/order.service';
 import { fetchOrderTimeline } from '../services/timeline.service';
+import { formatCurrency } from '../utils/currency';
 import {
   Receipt,
   RotateCcw,
@@ -938,7 +939,7 @@ export const OrderList: React.FC<OrderListProps> = () => {
                         }}
                         data-testid={`order-total-${order.id}`}
                       >
-                        ${order.totalPrice.toFixed(2)}
+                        {formatCurrency(order.totalPrice)}
                       </div>
                     </div>
 
@@ -1178,7 +1179,7 @@ export const OrderList: React.FC<OrderListProps> = () => {
                             </div>
 
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '1.4rem' }}>
-                              Historical unit snapshot: ${line.unitPrice.toFixed(2)} each
+                              Historical unit snapshot: {formatCurrency(line.unitPrice)} each
                             </div>
 
                             {line.specialInstructions && !line.isVoided && (
@@ -1223,7 +1224,7 @@ export const OrderList: React.FC<OrderListProps> = () => {
                                 textDecoration: line.isVoided ? 'line-through' : 'none',
                               }}
                             >
-                              ${line.lineTotal.toFixed(2)}
+                              {formatCurrency(line.lineTotal)}
                             </div>
 
                             {/* Void Button on Non-Voided Lines on Open Orders */}
@@ -1527,7 +1528,7 @@ export const OrderList: React.FC<OrderListProps> = () => {
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.8125rem' }}>
                                       <div style={{ color: 'var(--text-primary)' }}>
                                         Added <strong>{event.quantity}x {event.itemName}</strong>
-                                        {event.unitPrice !== null && event.unitPrice !== undefined && ` ($${Number(event.unitPrice).toFixed(2)} each)`}
+                                        {event.unitPrice !== null && event.unitPrice !== undefined && ` (${formatCurrency(Number(event.unitPrice))} each)`}
                                       </div>
                                       {event.notes && (
                                         <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic' }}>

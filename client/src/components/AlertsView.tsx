@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SlowOrderAlert } from '../types/alert';
 import { fetchSlowOrderAlerts, acknowledgeOrderAlert } from '../services/alert.service';
+import { formatCurrency } from '../utils/currency';
 import {
   AlertTriangle,
   RotateCcw,
@@ -355,7 +356,7 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ onSelectOrder, onAlertCo
                     Authoritative Total
                   </div>
                   <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#34d399' }}>
-                    ${alert.totalPrice.toFixed(2)}
+                    {formatCurrency(alert.totalPrice)}
                   </div>
                 </div>
               </div>

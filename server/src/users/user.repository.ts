@@ -24,7 +24,7 @@ const memoryUsers: Map<string, DbUser> = new Map([
     {
       id: '11111111-1111-1111-1111-111111111111',
       email: 'manager@restaurant.com',
-      name: 'Alex Rivera (Manager)',
+      name: 'Rajesh Sharma (Manager)',
       password_hash: defaultManagerHash,
       role: 'manager',
       created_at: new Date('2026-01-01T00:00:00Z'),
@@ -36,7 +36,7 @@ const memoryUsers: Map<string, DbUser> = new Map([
     {
       id: '22222222-2222-2222-2222-222222222222',
       email: 'waiter@restaurant.com',
-      name: 'Sam Chen (Waiter)',
+      name: 'Arjun Kumar (Waiter)',
       password_hash: defaultWaiterHash,
       role: 'waiter',
       created_at: new Date('2026-01-01T00:00:00Z'),
@@ -48,7 +48,7 @@ const memoryUsers: Map<string, DbUser> = new Map([
     {
       id: '33333333-3333-3333-3333-333333333333',
       email: 'waiter2@restaurant.com',
-      name: 'Taylor Jordan (Waiter 2)',
+      name: 'Ananya Rao (Waiter 2)',
       password_hash: defaultWaiterHash,
       role: 'waiter',
       created_at: new Date('2026-01-01T00:00:00Z'),
@@ -60,7 +60,19 @@ const memoryUsers: Map<string, DbUser> = new Map([
     {
       id: '44444444-4444-4444-4444-444444444444',
       email: 'waiter3@restaurant.com',
-      name: 'Morgan Blake (Waiter 3)',
+      name: 'Rahul Verma (Waiter 3)',
+      password_hash: defaultWaiterHash,
+      role: 'waiter',
+      created_at: new Date('2026-01-01T00:00:00Z'),
+      updated_at: new Date('2026-01-01T00:00:00Z'),
+    },
+  ],
+  [
+    'waiter4@restaurant.com',
+    {
+      id: '55555555-5555-5555-5555-555555555555',
+      email: 'waiter4@restaurant.com',
+      name: 'Sneha Reddy (Waiter 4)',
       password_hash: defaultWaiterHash,
       role: 'waiter',
       created_at: new Date('2026-01-01T00:00:00Z'),
@@ -192,7 +204,7 @@ export class UserRepository {
     memoryUsers.set('manager@restaurant.com', {
       id: '11111111-1111-1111-1111-111111111111',
       email: 'manager@restaurant.com',
-      name: 'Alex Rivera (Manager)',
+      name: 'Rajesh Sharma (Manager)',
       password_hash: defaultManagerHash,
       role: 'manager',
       created_at: new Date('2026-01-01T00:00:00Z'),
@@ -201,7 +213,7 @@ export class UserRepository {
     memoryUsers.set('waiter@restaurant.com', {
       id: '22222222-2222-2222-2222-222222222222',
       email: 'waiter@restaurant.com',
-      name: 'Sam Chen (Waiter)',
+      name: 'Arjun Kumar (Waiter)',
       password_hash: defaultWaiterHash,
       role: 'waiter',
       created_at: new Date('2026-01-01T00:00:00Z'),
@@ -210,7 +222,7 @@ export class UserRepository {
     memoryUsers.set('waiter2@restaurant.com', {
       id: '33333333-3333-3333-3333-333333333333',
       email: 'waiter2@restaurant.com',
-      name: 'Taylor Jordan (Waiter 2)',
+      name: 'Ananya Rao (Waiter 2)',
       password_hash: defaultWaiterHash,
       role: 'waiter',
       created_at: new Date('2026-01-01T00:00:00Z'),
@@ -219,7 +231,16 @@ export class UserRepository {
     memoryUsers.set('waiter3@restaurant.com', {
       id: '44444444-4444-4444-4444-444444444444',
       email: 'waiter3@restaurant.com',
-      name: 'Morgan Blake (Waiter 3)',
+      name: 'Rahul Verma (Waiter 3)',
+      password_hash: defaultWaiterHash,
+      role: 'waiter',
+      created_at: new Date('2026-01-01T00:00:00Z'),
+      updated_at: new Date('2026-01-01T00:00:00Z'),
+    });
+    memoryUsers.set('waiter4@restaurant.com', {
+      id: '55555555-5555-5555-5555-555555555555',
+      email: 'waiter4@restaurant.com',
+      name: 'Sneha Reddy (Waiter 4)',
       password_hash: defaultWaiterHash,
       role: 'waiter',
       created_at: new Date('2026-01-01T00:00:00Z'),

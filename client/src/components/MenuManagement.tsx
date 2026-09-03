@@ -25,13 +25,13 @@ import {
   AlertCircle,
   UtensilsCrossed,
   Tag,
-  DollarSign,
   Lock,
   RefreshCw,
   Layers,
   CheckSquare,
   Square,
 } from 'lucide-react';
+import { formatCurrency } from '../utils/currency';
 
 export const MenuManagement: React.FC = () => {
   const { user, token } = useAuth();
@@ -619,7 +619,7 @@ export const MenuManagement: React.FC = () => {
                     fontSize: '0.8125rem',
                   }}
                 >
-                  <DollarSign size={14} />
+                  <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>₹</span>
                   <span>Change Price</span>
                 </button>
 
@@ -830,7 +830,7 @@ export const MenuManagement: React.FC = () => {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    ${item.price.toFixed(2)}
+                    {formatCurrency(item.price)}
                   </span>
                 </div>
 
@@ -1051,11 +1051,14 @@ export const MenuManagement: React.FC = () => {
                     className="input"
                     style={{ width: '100%' }}
                   >
+                    <option value="Starters">Starters</option>
+                    <option value="Main Course">Main Course</option>
+                    <option value="Breads / Rice">Breads / Rice</option>
+                    <option value="Desserts">Desserts</option>
+                    <option value="Beverages">Beverages</option>
                     <option value="Appetizers">Appetizers</option>
                     <option value="Mains">Mains</option>
                     <option value="Sides">Sides</option>
-                    <option value="Desserts">Desserts</option>
-                    <option value="Beverages">Beverages</option>
                   </select>
                 </div>
 
@@ -1064,26 +1067,29 @@ export const MenuManagement: React.FC = () => {
                     htmlFor="menu-item-price"
                     style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.35rem' }}
                   >
-                    Price ($) *
+                    Price (₹) *
                   </label>
                   <div style={{ position: 'relative' }}>
-                    <DollarSign
-                      size={16}
+                    <span
                       style={{
                         position: 'absolute',
                         left: '0.75rem',
                         top: '50%',
                         transform: 'translateY(-50%)',
                         color: 'var(--text-muted)',
+                        fontWeight: 700,
+                        fontSize: '0.875rem',
                       }}
-                    />
+                    >
+                      ₹
+                    </span>
                     <input
                       id="menu-item-price"
                       type="number"
                       step="0.01"
                       min="0"
                       required
-                      placeholder="18.50"
+                      placeholder="220.00"
                       value={formData.price}
                       onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                       className="input"
@@ -1201,7 +1207,7 @@ export const MenuManagement: React.FC = () => {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--accent-primary)' }}>
-              <DollarSign size={24} />
+              <span style={{ fontWeight: 800, fontSize: '1.5rem', lineHeight: 1 }}>₹</span>
               <h3 id="bulk-price-modal-title" style={{ fontSize: '1.25rem', margin: 0, color: 'var(--text-primary)' }}>
                 Bulk Update Price
               </h3>
@@ -1237,19 +1243,22 @@ export const MenuManagement: React.FC = () => {
                   htmlFor="bulk-price-input"
                   style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.35rem' }}
                 >
-                  New Price ($) *
+                  New Price (₹) *
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <DollarSign
-                    size={16}
+                  <span
                     style={{
                       position: 'absolute',
                       left: '0.75rem',
                       top: '50%',
                       transform: 'translateY(-50%)',
                       color: 'var(--text-muted)',
+                      fontWeight: 700,
+                      fontSize: '0.875rem',
                     }}
-                  />
+                  >
+                    ₹
+                  </span>
                   <input
                     id="bulk-price-input"
                     data-testid="bulk-price-input"
@@ -1257,7 +1266,7 @@ export const MenuManagement: React.FC = () => {
                     step="0.01"
                     min="0"
                     required
-                    placeholder="15.00"
+                    placeholder="220.00"
                     value={bulkPriceInput}
                     onChange={(e) => setBulkPriceInput(e.target.value)}
                     className="input"

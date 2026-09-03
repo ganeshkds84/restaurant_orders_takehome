@@ -13,28 +13,28 @@ describe('Order Audit History Timeline API (Phase 10 - Goal 9)', () => {
 
   const mockManager: UserResponse = {
     id: '11111111-1111-1111-1111-111111111111',
-    name: 'Alex Rivera (Manager)',
+    name: 'Rajesh Sharma (Manager)',
     email: 'manager@restaurant.com',
     role: 'manager',
   };
 
   const mockWaiter1: UserResponse = {
     id: '22222222-2222-2222-2222-222222222222',
-    name: 'Sam Chen (Waiter)',
+    name: 'Arjun Kumar (Waiter)',
     email: 'waiter@restaurant.com',
     role: 'waiter',
   };
 
   const mockWaiter2: UserResponse = {
     id: '33333333-3333-3333-3333-333333333333',
-    name: 'Taylor Jordan (Waiter 2)',
+    name: 'Ananya Rao (Waiter 2)',
     email: 'waiter2@restaurant.com',
     role: 'waiter',
   };
 
   const mockWaiter3: UserResponse = {
     id: '44444444-4444-4444-4444-444444444444',
-    name: 'Morgan Blake (Waiter 3)',
+    name: 'Rahul Verma (Waiter 3)',
     email: 'waiter3@restaurant.com',
     role: 'waiter',
   };

@@ -10,14 +10,14 @@ const app = createApp();
 const managerUser = {
   id: '11111111-1111-1111-1111-111111111111',
   email: 'manager@restaurant.com',
-  name: 'Alex Rivera (Manager)',
+  name: 'Rajesh Sharma (Manager)',
   role: 'manager' as const,
 };
 
 const waiterUser = {
   id: '22222222-2222-2222-2222-222222222222',
   email: 'waiter@restaurant.com',
-  name: 'Sam Chen (Waiter)',
+  name: 'Arjun Kumar (Waiter)',
   role: 'waiter' as const,
 };
 
@@ -140,9 +140,9 @@ describe('Menu Item Management & Availability API (Phase 3)', () => {
         .post('/api/menu')
         .set('Authorization', `Bearer ${managerToken}`)
         .send({
-          name: 'Margherita Pizza', // already in seed
-          category: 'Mains',
-          price: 17.0,
+          name: 'Butter Chicken', // already in seed
+          category: 'Main Course',
+          price: 320.0,
         });
 
       expect(res.status).toBe(409);
@@ -157,8 +157,8 @@ describe('Menu Item Management & Availability API (Phase 3)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('success');
-      expect(res.body.data.item.name).toBe('Truffle Fries');
-      expect(res.body.data.item.price).toBe(9.5);
+      expect(res.body.data.item.name).toBe('Veg Samosa');
+      expect(res.body.data.item.price).toBe(90.0);
     });
 
     it('7. Missing menu item ID returns 404 Not Found', async () => {
@@ -210,13 +210,13 @@ describe('Menu Item Management & Availability API (Phase 3)', () => {
 
     it('10. Menu list can be filtered by category', async () => {
       const res = await request(app)
-        .get('/api/menu?category=Appetizers')
+        .get('/api/menu?category=Starters')
         .set('Authorization', `Bearer ${waiterToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.data.items.length).toBeGreaterThan(0);
       for (const item of res.body.data.items) {
-        expect(item.category).toBe('Appetizers');
+        expect(item.category).toBe('Starters');
       }
     });
   });

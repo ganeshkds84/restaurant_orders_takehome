@@ -8,7 +8,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  appName = 'Restaurant Orders',
+  appName = 'Spice Route Restaurant',
 }) => {
   const { isAuthenticated } = useAuth();
 
@@ -62,7 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
               {appName}
             </h1>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-              Phase 5 • Order Lifecycle & Business Rules
+              Authentic Indian Dining • Operations Platform
             </div>
           </div>
         </div>

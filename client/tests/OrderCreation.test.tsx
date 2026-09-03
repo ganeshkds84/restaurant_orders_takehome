@@ -257,16 +257,16 @@ describe('Order Creation & Order Lines Frontend UI (Phase 4)', () => {
       fireEvent.click(screen.getByTestId('add-item-btn-a0000000-0000-0000-0000-000000000001'));
     });
 
-    // Check preview total is $9.50
-    expect(screen.getByTestId('order-preview-total')).toHaveTextContent('$9.50');
+    // Check preview total is ₹9.50
+    expect(screen.getByTestId('order-preview-total')).toHaveTextContent('₹9.50');
 
     // Add Margherita Pizza (16.50)
     await act(async () => {
       fireEvent.click(screen.getByTestId('add-item-btn-a0000000-0000-0000-0000-000000000003'));
     });
 
-    // Subtotal preview is $26.00
-    expect(screen.getByTestId('order-preview-total')).toHaveTextContent('$26.00');
+    // Subtotal preview is ₹26.00
+    expect(screen.getByTestId('order-preview-total')).toHaveTextContent('₹26.00');
 
     // Type special instructions
     const instructionInput = screen.getByTestId('instruction-input-a0000000-0000-0000-0000-000000000001');
@@ -311,7 +311,7 @@ describe('Order Creation & Order Lines Frontend UI (Phase 4)', () => {
     });
 
     expect(screen.getByText(/Order Successfully Created!/i)).toBeInTheDocument();
-    expect(screen.getByTestId('created-order-total')).toHaveTextContent('$26.00');
+    expect(screen.getByTestId('created-order-total')).toHaveTextContent('₹26.00');
   });
 
   it('4. Navigates to Active Orders tab and views existing orders with line items', async () => {
@@ -333,6 +333,6 @@ describe('Order Creation & Order Lines Frontend UI (Phase 4)', () => {
       expect(screen.getByText('Table 4')).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId('order-total-o0000000-0000-0000-0000-000000000001')).toHaveTextContent('$26.00');
+    expect(screen.getByTestId('order-total-o0000000-0000-0000-0000-000000000001')).toHaveTextContent('₹26.00');
   });
 });

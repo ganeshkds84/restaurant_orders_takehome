@@ -11,21 +11,21 @@ const app = createApp();
 const managerUser = {
   id: '11111111-1111-1111-1111-111111111111',
   email: 'manager@restaurant.com',
-  name: 'Alex Rivera (Manager)',
+  name: 'Rajesh Sharma (Manager)',
   role: 'manager' as const,
 };
 
 const waiterUser1 = {
   id: '22222222-2222-2222-2222-222222222222',
   email: 'waiter1@restaurant.com',
-  name: 'Sam Chen (Waiter 1)',
+  name: 'Arjun Kumar (Waiter 1)',
   role: 'waiter' as const,
 };
 
 const waiterUser2 = {
   id: '33333333-3333-3333-3333-333333333333',
   email: 'waiter2@restaurant.com',
-  name: 'Taylor Jordan (Waiter 2)',
+  name: 'Ananya Rao (Waiter 2)',
   role: 'waiter' as const,
 };
 
@@ -56,8 +56,8 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
 
   describe('1. Order Creation & Validation', () => {
     it('1. Authenticated waiter can create a valid order with line items', async () => {
-      // Truffle Fries (id: a0000000-0000-0000-0000-000000000001, price: 9.50)
-      // Caesar Salad (id: a0000000-0000-0000-0000-000000000002, price: 12.00)
+      // Veg Samosa (id: a0000000-0000-0000-0000-000000000001, price: 90.00)
+      // Paneer Tikka (id: a0000000-0000-0000-0000-000000000002, price: 220.00)
       const payload = {
         tableNumber: 'Table 14',
         items: [
@@ -69,7 +69,7 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
           {
             menuItemId: 'a0000000-0000-0000-0000-000000000002',
             quantity: 1,
-            specialInstructions: 'Dressing on side',
+            specialInstructions: 'Mint chutney on side',
           },
         ],
       };
@@ -86,15 +86,15 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
         primaryWaiterId: waiterUser1.id,
         status: 'placed',
         isArchived: false,
-        totalPrice: 31.0, // 2*9.50 + 1*12.00 = 19 + 12 = 31.00
+        totalPrice: 400.0, // 2*90.00 + 1*220.00 = 180 + 220 = 400.00
       });
       expect(res.body.data.order.lines).toHaveLength(2);
       expect(res.body.data.order.lines[0]).toMatchObject({
         menuItemId: 'a0000000-0000-0000-0000-000000000001',
-        itemName: 'Truffle Fries',
+        itemName: 'Veg Samosa',
         quantity: 2,
-        unitPrice: 9.5,
-        lineTotal: 19.0,
+        unitPrice: 90.0,
+        lineTotal: 180.0,
         specialInstructions: 'Extra crispy',
       });
     });
@@ -234,7 +234,7 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
     });
 
     it('10. Client CANNOT supply/override menu prices (server reads from DB)', async () => {
-      // Truffle Fries is 9.50 in database; client tries to supply 1.00
+      // Veg Samosa is 90.00 in database; client tries to supply 1.00
       const res = await request(app)
         .post('/api/orders')
         .set('Authorization', `Bearer ${waiter1Token}`)
@@ -251,8 +251,8 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
         });
 
       expect(res.status).toBe(201);
-      expect(res.body.data.order.lines[0].unitPrice).toBe(9.5);
-      expect(res.body.data.order.totalPrice).toBe(19.0);
+      expect(res.body.data.order.lines[0].unitPrice).toBe(90.0);
+      expect(res.body.data.order.totalPrice).toBe(180.0);
     });
 
     it('11. Client CANNOT supply/override the order total', async () => {
@@ -267,7 +267,7 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
         });
 
       expect(res.status).toBe(201);
-      expect(res.body.data.order.totalPrice).toBe(9.5);
+      expect(res.body.data.order.totalPrice).toBe(90.0);
     });
 
     it('12. Client CANNOT supply/override initial status (always starts as placed)', async () => {
@@ -291,13 +291,13 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
         tableNumber: 'Bar-4',
         items: [
           {
-            menuItemId: 'a0000000-0000-0000-0000-000000000003', // Margherita Pizza: 16.50
+            menuItemId: 'a0000000-0000-0000-0000-000000000003', // Chicken 65: 240.00
             quantity: 2,
           },
           {
-            menuItemId: 'a0000000-0000-0000-0000-000000000008', // Sparkling Water: 4.00
+            menuItemId: 'a0000000-0000-0000-0000-000000000008', // Veg Biryani: 240.00
             quantity: 3,
-            specialInstructions: 'With lemon slices',
+            specialInstructions: 'Extra spicy',
           },
         ],
       };
@@ -311,20 +311,20 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
       const order = res.body.data.order;
       expect(order.lines).toHaveLength(2);
 
-      const pizzaLine = order.lines.find((l: any) => l.menuItemId === 'a0000000-0000-0000-0000-000000000003');
-      expect(pizzaLine).toBeDefined();
-      expect(pizzaLine.quantity).toBe(2);
-      expect(pizzaLine.unitPrice).toBe(16.5);
-      expect(pizzaLine.lineTotal).toBe(33.0);
+      const chickenLine = order.lines.find((l: any) => l.menuItemId === 'a0000000-0000-0000-0000-000000000003');
+      expect(chickenLine).toBeDefined();
+      expect(chickenLine.quantity).toBe(2);
+      expect(chickenLine.unitPrice).toBe(240.0);
+      expect(chickenLine.lineTotal).toBe(480.0);
 
-      const waterLine = order.lines.find((l: any) => l.menuItemId === 'a0000000-0000-0000-0000-000000000008');
-      expect(waterLine).toBeDefined();
-      expect(waterLine.quantity).toBe(3);
-      expect(waterLine.unitPrice).toBe(4.0);
-      expect(waterLine.lineTotal).toBe(12.0);
-      expect(waterLine.specialInstructions).toBe('With lemon slices');
+      const biryaniLine = order.lines.find((l: any) => l.menuItemId === 'a0000000-0000-0000-0000-000000000008');
+      expect(biryaniLine).toBeDefined();
+      expect(biryaniLine.quantity).toBe(3);
+      expect(biryaniLine.unitPrice).toBe(240.0);
+      expect(biryaniLine.lineTotal).toBe(720.0);
+      expect(biryaniLine.specialInstructions).toBe('Extra spicy');
 
-      expect(order.totalPrice).toBe(45.0); // 33.0 + 12.0
+      expect(order.totalPrice).toBe(1200.0); // 480.0 + 720.0
     });
 
     it('17-20. CRITICAL REGRESSION TEST: Changing menu item price later DOES NOT affect existing order line unit price or order total', async () => {
@@ -700,7 +700,7 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
 
   describe('7. Order Line Voiding & Total Recalculation (Phase 5)', () => {
     it('34-37. Voiding an order line requires a reason, marks the line without deleting, recalculates total, and preserves historical prices', async () => {
-      // Create order with Truffle Fries (2x $9.50 = $19) and Caesar Salad (1x $12.00 = $12), Total = $31.00
+      // Create order with Veg Samosa (2x ₹90.00 = ₹180) and Paneer Tikka (1x ₹220.00 = ₹220), Total = ₹400.00
       const createRes = await request(app)
         .post('/api/orders')
         .set('Authorization', `Bearer ${waiter1Token}`)
@@ -712,42 +712,42 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
           ],
         });
       const orderId = createRes.body.data.order.id;
-      const friesLineId = createRes.body.data.order.lines[0].id;
-      const saladLineId = createRes.body.data.order.lines[1].id;
-      expect(createRes.body.data.order.totalPrice).toBe(31.0);
+      const samosaLineId = createRes.body.data.order.lines[0].id;
+      const tikkaLineId = createRes.body.data.order.lines[1].id;
+      expect(createRes.body.data.order.totalPrice).toBe(400.0);
 
       // 34. Voiding without a reason is rejected with 400
       const voidNoReasonRes = await request(app)
-        .patch(`/api/orders/${orderId}/lines/${friesLineId}/void`)
+        .patch(`/api/orders/${orderId}/lines/${samosaLineId}/void`)
         .set('Authorization', `Bearer ${waiter1Token}`)
         .send({ reason: '' });
       expect(voidNoReasonRes.status).toBe(400);
 
       // 35. Valid void with reason succeeds
       const voidRes = await request(app)
-        .patch(`/api/orders/${orderId}/lines/${friesLineId}/void`)
+        .patch(`/api/orders/${orderId}/lines/${samosaLineId}/void`)
         .set('Authorization', `Bearer ${waiter1Token}`)
-        .send({ reason: 'Customer allergic to truffle oil' });
+        .send({ reason: 'Customer changed mind to soup' });
 
       expect(voidRes.status).toBe(200);
       const updatedOrder = voidRes.body.data.order;
 
       // 36. Voided line remains persisted with void reason
       expect(updatedOrder.lines).toHaveLength(2);
-      const voidedLine = updatedOrder.lines.find((l: any) => l.id === friesLineId);
+      const voidedLine = updatedOrder.lines.find((l: any) => l.id === samosaLineId);
       expect(voidedLine).toMatchObject({
         isVoided: true,
-        voidReason: 'Customer allergic to truffle oil',
-        unitPrice: 9.5, // Historical unit price remains intact
+        voidReason: 'Customer changed mind to soup',
+        unitPrice: 90.0, // Historical unit price remains intact
         quantity: 2,
       });
 
-      // 37. Total price recalculated excluding voided line (only salad $12.00 remains)
-      expect(updatedOrder.totalPrice).toBe(12.0);
+      // 37. Total price recalculated excluding voided line (only Paneer Tikka ₹220.00 remains)
+      expect(updatedOrder.totalPrice).toBe(220.0);
 
       // Voiding an already-voided line is rejected
       const reVoidRes = await request(app)
-        .patch(`/api/orders/${orderId}/lines/${friesLineId}/void`)
+        .patch(`/api/orders/${orderId}/lines/${samosaLineId}/void`)
         .set('Authorization', `Bearer ${waiter1Token}`)
         .send({ reason: 'Void again' });
       expect(reVoidRes.status).toBe(400);
@@ -796,7 +796,7 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
 
   describe('8. Adding Order Lines Before Served (Phase 5)', () => {
     it('39-40. Lines can be added to an open order before served, snapshotting price and updating total', async () => {
-      // Create initial order with 1x Truffle Fries ($9.50)
+      // Create initial order with 1x Veg Samosa (₹90.00)
       const createRes = await request(app)
         .post('/api/orders')
         .set('Authorization', `Bearer ${waiter1Token}`)
@@ -805,23 +805,23 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
           items: [{ menuItemId: 'a0000000-0000-0000-0000-000000000001', quantity: 1 }],
         });
       const orderId = createRes.body.data.order.id;
-      expect(createRes.body.data.order.totalPrice).toBe(9.5);
+      expect(createRes.body.data.order.totalPrice).toBe(90.0);
 
-      // Add Caesar Salad (1x $12.00) while in Placed
+      // Add Paneer Tikka (1x ₹220.00) while in Placed
       const addLineRes = await request(app)
         .post(`/api/orders/${orderId}/lines`)
         .set('Authorization', `Bearer ${waiter1Token}`)
         .send({
           menuItemId: 'a0000000-0000-0000-0000-000000000002',
           quantity: 1,
-          specialInstructions: 'No croutons',
+          specialInstructions: 'Mild spice',
         });
 
       expect(addLineRes.status).toBe(201);
       expect(addLineRes.body.data.order.lines).toHaveLength(2);
-      expect(addLineRes.body.data.order.totalPrice).toBe(21.5); // 9.50 + 12.00 = 21.50
+      expect(addLineRes.body.data.order.totalPrice).toBe(310.0); // 90.00 + 220.00 = 310.00
 
-      // Progress to Preparing and add Margherita Pizza (1x $16.50)
+      // Progress to Preparing and add Chicken 65 (1x ₹240.00)
       await request(app)
         .patch(`/api/orders/${orderId}/status`)
         .set('Authorization', `Bearer ${waiter1Token}`)
@@ -841,7 +841,7 @@ describe('Order Creation & Order Lines API (Phase 4)', () => {
 
       expect(addLinePrepRes.status).toBe(201);
       expect(addLinePrepRes.body.data.order.lines).toHaveLength(3);
-      expect(addLinePrepRes.body.data.order.totalPrice).toBe(38.0); // 21.50 + 16.50 = 38.00
+      expect(addLinePrepRes.body.data.order.totalPrice).toBe(550.0); // 310.00 + 240.00 = 550.00
 
       // Progress to Served
       await request(app)

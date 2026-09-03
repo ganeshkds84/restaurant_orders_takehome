@@ -12,21 +12,21 @@ const app = createApp();
 const managerUser = {
   id: '11111111-1111-1111-1111-111111111111',
   email: 'manager@restaurant.com',
-  name: 'Alex Rivera (Manager)',
+  name: 'Rajesh Sharma (Manager)',
   role: 'manager' as UserRole,
 };
 
 const waiter1User = {
   id: '22222222-2222-2222-2222-222222222222',
   email: 'waiter@restaurant.com',
-  name: 'Sam Chen (Waiter)',
+  name: 'Arjun Kumar (Waiter)',
   role: 'waiter' as UserRole,
 };
 
 const waiter2User = {
   id: '33333333-3333-3333-3333-333333333333',
   email: 'waiter2@restaurant.com',
-  name: 'Taylor Jordan (Waiter 2)',
+  name: 'Ananya Rao (Waiter 2)',
   role: 'waiter' as UserRole,
 };
 
@@ -155,8 +155,8 @@ describe('Dashboard Analytics & Landing View API (Phase 9 - Goal 8)', () => {
       expect(headline.ordersPlacedToday).toBe(3);
       // Orders served today: Order 2 = 1
       expect(headline.ordersServedToday).toBe(1);
-      // Revenue today: Order 2 = $24.00
-      expect(headline.revenueToday).toBe(24);
+      // Revenue today: Order 2 = ₹440.00
+      expect(headline.revenueToday).toBe(440);
     });
 
     it('5. Excludes archived orders from open orders count', async () => {
@@ -264,11 +264,11 @@ describe('Dashboard Analytics & Landing View API (Phase 9 - Goal 8)', () => {
 
       expect(sam).toBeDefined();
       expect(sam?.orderCount).toBe(1);
-      expect(sam?.totalRevenue).toBe(19);
+      expect(sam?.totalRevenue).toBe(180);
 
       expect(taylor).toBeDefined();
       expect(taylor?.orderCount).toBe(1);
-      expect(taylor?.totalRevenue).toBe(12);
+      expect(taylor?.totalRevenue).toBe(220);
     });
   });
 

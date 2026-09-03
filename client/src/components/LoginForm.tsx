@@ -69,7 +69,7 @@ export const LoginForm: React.FC = () => {
             System Sign In
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Enter your credentials to access the restaurant management platform.
+            Enter your credentials to access the Spice Route restaurant management platform.
           </p>
         </div>
 
@@ -246,7 +246,7 @@ export const LoginForm: React.FC = () => {
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <UserCheck size={16} color="var(--primary)" />
-                <strong>Manager Account:</strong> manager@restaurant.com
+                <strong>Manager (Rajesh Sharma):</strong> manager@restaurant.com
               </span>
               <span className="badge badge-manager">Manager</span>
             </button>
@@ -265,7 +265,7 @@ export const LoginForm: React.FC = () => {
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <UserCheck size={16} color="var(--success)" />
-                <strong>Waiter Account:</strong> waiter@restaurant.com
+                <strong>Waiter (Arjun Kumar):</strong> waiter@restaurant.com
               </span>
               <span className="badge badge-waiter">Waiter</span>
             </button>

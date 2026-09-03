@@ -118,7 +118,7 @@ describe('Dashboard Analytics & Landing View Frontend UI (Phase 9 - Goal 8)', ()
 
     expect(screen.getByTestId('stat-value-placed-today')).toHaveTextContent('8');
     expect(screen.getByTestId('stat-value-served-today')).toHaveTextContent('6');
-    expect(screen.getByTestId('stat-value-revenue-today')).toHaveTextContent('$184.50');
+    expect(screen.getByTestId('stat-value-revenue-today')).toHaveTextContent('₹184.50');
   });
 
   it('2. Renders status pipeline breakdown with all lifecycle statuses and counts', async () => {
@@ -170,10 +170,10 @@ describe('Dashboard Analytics & Landing View Frontend UI (Phase 9 - Goal 8)', ()
 
     expect(screen.getByTestId('waiter-row-22222222-2222-2222-2222-222222222222')).toHaveTextContent('Sam Chen');
     expect(screen.getByTestId('waiter-row-22222222-2222-2222-2222-222222222222')).toHaveTextContent('5');
-    expect(screen.getByTestId('waiter-row-22222222-2222-2222-2222-222222222222')).toHaveTextContent('$120.00');
+    expect(screen.getByTestId('waiter-row-22222222-2222-2222-2222-222222222222')).toHaveTextContent('₹120.00');
 
     expect(screen.getByTestId('waiter-row-33333333-3333-3333-3333-333333333333')).toHaveTextContent('Taylor Jordan');
-    expect(screen.getByTestId('waiter-row-33333333-3333-3333-3333-333333333333')).toHaveTextContent('$64.50');
+    expect(screen.getByTestId('waiter-row-33333333-3333-3333-3333-333333333333')).toHaveTextContent('₹64.50');
   });
 
   it('5. Refresh button triggers re-fetching of dashboard metrics', async () => {

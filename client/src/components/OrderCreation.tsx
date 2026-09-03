@@ -4,6 +4,7 @@ import { MenuItem } from '../types/menu';
 import { Order, CreateOrderItemPayload } from '../types/order';
 import { fetchMenuItemsApi } from '../services/menu.service';
 import { createOrderApi } from '../services/order.service';
+import { formatCurrency } from '../utils/currency';
 import {
   ShoppingBag,
   Plus,
@@ -273,7 +274,7 @@ export const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreated }) 
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Authoritative Total</div>
               <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#34d399' }} data-testid="created-order-total">
-                ${successOrder.totalPrice.toFixed(2)}
+                {formatCurrency(successOrder.totalPrice)}
               </div>
             </div>
           </div>
@@ -298,10 +299,10 @@ export const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreated }) 
                     <span>
                       {line.quantity}x {line.itemName}
                     </span>
-                    <span style={{ color: 'var(--accent-primary)' }}>${line.lineTotal.toFixed(2)}</span>
+                    <span style={{ color: 'var(--accent-primary)' }}>{formatCurrency(line.lineTotal)}</span>
                   </div>
                   <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.15rem' }}>
-                    Unit snapshot: ${line.unitPrice.toFixed(2)}
+                    Unit snapshot: {formatCurrency(line.unitPrice)}
                   </div>
                   {line.specialInstructions && (
                     <div style={{ color: '#fbbf24', fontSize: '0.75rem', fontStyle: 'italic', marginTop: '0.25rem' }}>
@@ -389,7 +390,7 @@ export const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreated }) 
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          ${item.price.toFixed(2)}
+                          {formatCurrency(item.price)}
                         </span>
                       </div>
                       <span
@@ -468,7 +469,7 @@ export const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreated }) 
                             </button>
                           </div>
                           <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--accent-primary)' }}>
-                            ${(item.price * selected.quantity).toFixed(2)}
+                            {formatCurrency(item.price * selected.quantity)}
                           </span>
                         </div>
                       ) : (
@@ -584,7 +585,7 @@ export const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreated }) 
                       </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span style={{ fontWeight: 700, fontSize: '0.875rem', color: '#34d399' }}>
-                          ${(menuItem.price * quantity).toFixed(2)}
+                          {formatCurrency(menuItem.price * quantity)}
                         </span>
                         <button
                           type="button"
@@ -630,7 +631,7 @@ export const OrderCreation: React.FC<OrderCreationProps> = ({ onOrderCreated }) 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Estimated Subtotal</span>
                 <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }} data-testid="order-preview-total">
-                  ${estimatedTotal.toFixed(2)}
+                  {formatCurrency(estimatedTotal)}
                 </span>
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>

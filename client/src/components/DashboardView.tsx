@@ -7,7 +7,6 @@ import {
   Clock,
   TrendingUp,
   CheckCircle2,
-  DollarSign,
   RefreshCw,
   AlertCircle,
   Users,
@@ -16,6 +15,7 @@ import {
   Layers,
   Award,
 } from 'lucide-react';
+import { formatCurrency } from '../utils/currency';
 
 const STATUS_CONFIG: Record<
   OrderStatus,
@@ -90,14 +90,7 @@ export const DashboardView: React.FC = () => {
     loadStats();
   }, [loadStats]);
 
-  const formatCurrency = (val: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(val);
-  };
+
 
   const totalOrdersInBreakdown = stats
     ? stats.statusBreakdown.reduce((sum, item) => sum + item.count, 0)
@@ -149,7 +142,7 @@ export const DashboardView: React.FC = () => {
               fontSize: '0.875rem',
             }}
           >
-            Server-authoritative live restaurant throughput, order pipelines, and 14-day history.
+            Spice Route Restaurant • Server-authoritative live throughput, order pipelines, and 14-day history.
           </p>
         </div>
 
@@ -464,9 +457,17 @@ export const DashboardView: React.FC = () => {
                     borderRadius: 'var(--radius-md)',
                     backgroundColor: 'rgba(139, 92, 246, 0.15)',
                     color: '#8b5cf6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: '32px',
+                    height: '32px',
+                    fontWeight: 800,
+                    fontSize: '1.125rem',
+                    lineHeight: 1,
                   }}
                 >
-                  <DollarSign size={18} />
+                  ₹
                 </div>
               </div>
               <div

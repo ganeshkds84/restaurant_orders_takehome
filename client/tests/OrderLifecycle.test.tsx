@@ -304,7 +304,7 @@ describe('Order Lifecycle & Voiding Frontend UI (Phase 5)', () => {
       expect(screen.getByTestId('void-reason-l0000000-0000-0000-0000-000000000001')).toHaveTextContent(
         'Void reason: Customer allergic to truffle'
       );
-      expect(screen.getByTestId('order-total-o0000000-0000-0000-0000-000000000001')).toHaveTextContent('$16.50');
+      expect(screen.getByTestId('order-total-o0000000-0000-0000-0000-000000000001')).toHaveTextContent('₹16.50');
     });
   });
 });

@@ -11,28 +11,28 @@ const app = createApp();
 const managerUser = {
   id: '11111111-1111-1111-1111-111111111111',
   email: 'manager@restaurant.com',
-  name: 'Alex Rivera (Manager)',
+  name: 'Rajesh Sharma (Manager)',
   role: 'manager' as const,
 };
 
 const waiterUser1 = {
   id: '22222222-2222-2222-2222-222222222222',
   email: 'waiter@restaurant.com',
-  name: 'Sam Chen (Waiter 1)',
+  name: 'Arjun Kumar (Waiter 1)',
   role: 'waiter' as const,
 };
 
 const waiterUser2 = {
   id: '33333333-3333-3333-3333-333333333333',
   email: 'waiter2@restaurant.com',
-  name: 'Taylor Jordan (Waiter 2)',
+  name: 'Ananya Rao (Waiter 2)',
   role: 'waiter' as const,
 };
 
 const waiterUser3 = {
   id: '44444444-4444-4444-4444-444444444444',
   email: 'waiter3@restaurant.com',
-  name: 'Morgan Blake (Waiter 3)',
+  name: 'Rahul Verma (Waiter 3)',
   role: 'waiter' as const,
 };
 
@@ -465,7 +465,7 @@ describe('Collaborators & Order Access API (Phase 6)', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.data.order.lines).toHaveLength(2);
-      expect(res.body.data.order.totalPrice).toBe(31.0); // 19.00 + 12.00
+      expect(res.body.data.order.totalPrice).toBe(400.0); // 180.00 + 220.00
     });
 
     it('23. Collaborator can void order lines with a reason while order is open', async () => {
