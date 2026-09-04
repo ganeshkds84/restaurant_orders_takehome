@@ -9,7 +9,6 @@ services:
     plan: free
     region: oregon
     buildCommand: npm install && npm install --prefix server && npm run build:server
-    preDeployCommand: npm run db:migrate:prod
     startCommand: npm run start:server
     healthCheckPath: /api/health
     envVars:
@@ -24,7 +23,6 @@ services:
       - key: DATABASE_SSL
         value: "true"
       - key: CORS_ORIGIN
-        value: "http://localhost:5173"
         sync: false
       - key: JWT_SECRET
         generateValue: true
@@ -36,7 +34,6 @@ services:
     name: restaurant-orders-client
     runtime: static
     plan: free
-    region: oregon
     buildCommand: npm install && npm install --prefix client && npm run build:client
     staticPublishPath: ./client/dist
     routes:
@@ -45,7 +42,6 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_BASE_URL
-        value: "http://localhost:4000/api"
         sync: false
 
 databases:
@@ -54,4 +50,3 @@ databases:
     plan: free
     region: oregon
     databaseName: restaurant_orders
-    user: postgres
