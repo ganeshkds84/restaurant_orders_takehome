@@ -8,7 +8,7 @@ services:
     runtime: node
     plan: free
     region: oregon
-    buildCommand: npm install && npm install --prefix server && npm run build:server
+    buildCommand: npm install && npm install --prefix server --include=dev && npm run build:server
     startCommand: npm run start:server
     healthCheckPath: /api/health
     envVars:
