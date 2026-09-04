@@ -18,6 +18,10 @@
     "typecheck:client": "npm run typecheck --prefix client",
     "db:migrate": "npm run db:migrate --prefix server",
     "db:seed": "npm run db:seed --prefix server",
+    "db:migrate:prod": "npm run db:migrate:prod --prefix server",
+    "db:seed:prod": "npm run db:seed:prod --prefix server",
+    "start": "npm run start --prefix server",
+    "start:server": "npm run start --prefix server",
     "install:all": "npm install && npm install --prefix server && npm install --prefix client"
   },
   "devDependencies": {

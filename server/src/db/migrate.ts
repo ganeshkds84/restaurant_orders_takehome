@@ -30,10 +30,15 @@ export async function runMigrations(): Promise<void> {
       );
     `);
 
-    const migrationsDir = path.join(__dirname, 'migrations');
+    let migrationsDir = path.join(__dirname, 'migrations');
     if (!fs.existsSync(migrationsDir)) {
-      logger.warn(`Migrations directory not found: ${migrationsDir}`);
-      return;
+      const srcMigrationsDir = path.join(__dirname, '../../src/db/migrations');
+      if (fs.existsSync(srcMigrationsDir)) {
+        migrationsDir = srcMigrationsDir;
+      } else {
+        logger.warn(`Migrations directory not found: ${migrationsDir}`);
+        return;
+      }
     }
 
     const files = fs

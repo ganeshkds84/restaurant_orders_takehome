@@ -10,9 +10,13 @@ export function createApp(): Express {
   const app = express();
 
   // Basic security and parsing middleware
+  const corsOrigin = env.CORS_ORIGIN.includes(',')
+    ? env.CORS_ORIGIN.split(',').map((o) => o.trim())
+    : env.CORS_ORIGIN;
+
   app.use(
     cors({
-      origin: env.CORS_ORIGIN,
+      origin: corsOrigin,
       credentials: true,
     })
   );
