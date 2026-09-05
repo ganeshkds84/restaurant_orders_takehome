@@ -3,6 +3,11 @@
 > **Authentic Indian Dining • Operations Platform**  
 > A high-reliability, full-stack restaurant operations platform replacing physical order tickets with real-time order lifecycle tracking, menu management, waiter collaboration, operational analytics, audit trails, and slow-order alerts.
 
+### Quick Links & Live Demo
+- **Live Application:** [https://restaurant-orders-client.onrender.com/](https://restaurant-orders-client.onrender.com/)
+- **Backend Health Check:** [https://restaurant-orders-server.onrender.com/api/health](https://restaurant-orders-server.onrender.com/api/health)
+- **Submission Document & Credentials:** [SUBMISSION.md](SUBMISSION.md)
+
 ---
 
 ## Project Overview

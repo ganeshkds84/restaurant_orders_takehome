@@ -10,8 +10,9 @@ Designed for high-reliability dining room operations, the application provides d
 
 ## 2. Links
 
-- **GitHub repository:** `https://github.com/ganeshkds84/restaurant_orders_takehome.git`
-- **Live application:** Live deployment: To be configured in Phase 17.
+- **GitHub repository:** [https://github.com/ganeshkds84/restaurant_orders_takehome.git](https://github.com/ganeshkds84/restaurant_orders_takehome.git)
+- **Live application:** [https://restaurant-orders-client.onrender.com/](https://restaurant-orders-client.onrender.com/)
+- **Backend API & Health Check:** [https://restaurant-orders-server.onrender.com/api/health](https://restaurant-orders-server.onrender.com/api/health)
 
 ---
 
